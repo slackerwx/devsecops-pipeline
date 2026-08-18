@@ -1,0 +1,5 @@
+rules:
+  cache-poisoning:
+    ignore:
+      # buildx gha cache is branch-scoped; the publishing build only reads caches its own ref wrote.
+      - pipeline.yml

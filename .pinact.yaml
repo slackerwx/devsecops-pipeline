@@ -1,0 +1,5 @@
+version: 3
+files:
+  - pattern: ".github/workflows/*.yml"
+  - pattern: "actions/**/action.yml"
+  - pattern: "examples/*.yml"
