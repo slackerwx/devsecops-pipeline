@@ -65,6 +65,14 @@ jobs:
         include:
           - stack: node
             port: "3000"
+          - stack: python
+            port: "5000"
+          - stack: go
+            port: "8080"
+          - stack: java
+            port: "8080"
+          - stack: dotnet
+            port: "8080"
     permissions:
       contents: read
       packages: write        # the image stage pushes the fixture image to GHCR

@@ -185,6 +185,36 @@ jobs:
           package-manager: ${{ needs.plan.outputs.package-manager }}
           phase: build
           command: ${{ inputs.build-command }}
+      - if: needs.plan.outputs.stack == 'python'
+        uses: ./.pipeline/actions/stacks/python
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: build
+          command: ${{ inputs.build-command }}
+      - if: needs.plan.outputs.stack == 'go'
+        uses: ./.pipeline/actions/stacks/go
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          phase: build
+          command: ${{ inputs.build-command }}
+      - if: needs.plan.outputs.stack == 'java'
+        uses: ./.pipeline/actions/stacks/java
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: build
+          command: ${{ inputs.build-command }}
+      - if: needs.plan.outputs.stack == 'dotnet'
+        uses: ./.pipeline/actions/stacks/dotnet
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          phase: build
+          command: ${{ inputs.build-command }}
 
   test:
     name: test
@@ -211,6 +241,36 @@ jobs:
           working-directory: source/${{ inputs.working-directory }}
           version: ${{ needs.plan.outputs.toolchain-version }}
           package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: test
+          command: ${{ inputs.test-command }}
+      - if: needs.plan.outputs.stack == 'python'
+        uses: ./.pipeline/actions/stacks/python
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: test
+          command: ${{ inputs.test-command }}
+      - if: needs.plan.outputs.stack == 'go'
+        uses: ./.pipeline/actions/stacks/go
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          phase: test
+          command: ${{ inputs.test-command }}
+      - if: needs.plan.outputs.stack == 'java'
+        uses: ./.pipeline/actions/stacks/java
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: test
+          command: ${{ inputs.test-command }}
+      - if: needs.plan.outputs.stack == 'dotnet'
+        uses: ./.pipeline/actions/stacks/dotnet
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
           phase: test
           command: ${{ inputs.test-command }}
       - name: upload test reports
