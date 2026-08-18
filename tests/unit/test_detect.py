@@ -87,6 +87,12 @@ class DetectStackTest(unittest.TestCase):
         self.assertEqual(detect.detect_stack(root), "go")
         self.assertEqual(detect.package_manager("go", root), "gomod")
 
+    def test_java_fixture(self):
+        root = Path("tests/fixtures/java")
+        self.assertEqual(detect.detect_stack(root), "java")
+        self.assertEqual(detect.package_manager("java", root), "maven")
+        self.assertEqual(detect.toolchain_version("java", root, ""), "21")
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):
