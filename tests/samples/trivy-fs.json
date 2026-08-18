@@ -1,0 +1,21 @@
+{
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {"VulnerabilityID": "CVE-2019-10744", "PkgName": "lodash", "InstalledVersion": "4.17.11", "FixedVersion": "4.17.12", "Severity": "CRITICAL", "Title": "lodash: prototype pollution in defaultsDeep", "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-10744"},
+        {"VulnerabilityID": "CVE-2020-8203", "PkgName": "lodash", "InstalledVersion": "4.17.11", "FixedVersion": "4.17.19", "Severity": "HIGH", "Title": "lodash: prototype pollution in zipObjectDeep", "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-8203"},
+        {"VulnerabilityID": "GHSA-xxxx", "PkgName": "example", "InstalledVersion": "1.0.0", "Severity": "UNKNOWN", "Title": "no fix", "PrimaryURL": ""}
+      ]
+    },
+    {
+      "Target": "Loose File License(s)",
+      "Class": "license-file",
+      "Licenses": [
+        {"Severity": "HIGH", "Category": "restricted", "PkgName": "some-lib", "FilePath": "node_modules/some-lib/LICENSE", "Name": "GPL-3.0", "Link": "https://opensource.org/licenses/GPL-3.0"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/slackerwx/devsecops-pipeline/scripts/schema/findings.v1.json",
+  "title": "devsecops-pipeline findings v1",
+  "type": "object",
+  "required": ["schema", "run", "thresholds", "categories", "verdict", "failed_categories"],
+  "properties": {
+    "schema": {"const": "devsecops-pipeline/findings/v1"},
+    "run": {
+      "type": "object",
+      "required": ["repository", "sha", "ref", "run_id", "run_attempt", "working_directory", "stack", "mode"],
+      "properties": {
+        "repository": {"type": "string"}, "sha": {"type": "string"}, "ref": {"type": "string"},
+        "run_id": {"type": "integer"}, "run_attempt": {"type": "integer"},
+        "working_directory": {"type": "string"}, "stack": {"type": "string"},
+        "mode": {"enum": ["enforce", "audit"]}
+      }
+    },
+    "thresholds": {"type": "object", "additionalProperties": {"enum": ["any", "critical", "high", "medium", "low", "none"]}},
+    "categories": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["category", "tools", "status", "counts", "findings", "gate", "threshold"],
+        "properties": {
+          "category": {"type": "string"},
+          "tools": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "version": {"type": "string"}}}},
+          "status": {"enum": ["ok", "error", "skipped"]},
+          "reason": {"type": "string"},
+          "gate": {"enum": ["pass", "fail", "skipped"]},
+          "threshold": {"type": "string"},
+          "at_or_above": {"type": "integer"},
+          "counts": {"type": "object", "required": ["critical", "high", "medium", "low", "info"], "additionalProperties": {"type": "integer"}},
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "severity", "location", "tool"],
+              "properties": {
+                "id": {"type": "string"}, "title": {"type": "string"},
+                "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+                "location": {"type": "string"}, "package": {"type": "string"}, "installed": {"type": "string"},
+                "fixed": {"type": "string"}, "url": {"type": "string"}, "tool": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "verdict": {"enum": ["pass", "fail"]},
+    "failed_categories": {"type": "array", "items": {"type": "string"}}
+  }
+}

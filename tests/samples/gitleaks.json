@@ -1,0 +1,12 @@
+[
+  {
+    "Description": "Private Key",
+    "StartLine": 1,
+    "EndLine": 3,
+    "File": "secrets/id_rsa",
+    "Secret": "REDACTED",
+    "Match": "REDACTED",
+    "RuleID": "private-key",
+    "Fingerprint": "0123abcd:secrets/id_rsa:private-key:1"
+  }
+]

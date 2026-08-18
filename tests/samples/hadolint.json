@@ -1,0 +1,4 @@
+[
+  {"code": "DL3007", "column": 1, "file": "Dockerfile", "level": "warning", "line": 1, "message": "Using latest is prone to errors if the image will ever update. Pin the version explicitly to a release tag"},
+  {"code": "DL3020", "column": 1, "file": "Dockerfile", "level": "error", "line": 4, "message": "Use COPY instead of ADD for files and folders"}
+]
