@@ -1,0 +1,87 @@
+name: detect
+description: Detect stack, package manager and toolchain version; resolve the pipeline plan.
+inputs:
+  working-directory:
+    description: App root relative to the repository (not prefixed with source/)
+    default: "."
+  source-root:
+    description: Directory where the caller repository is checked out
+    default: source
+  stack:
+    default: auto
+  toolchain-version:
+    default: ""
+  dockerfile:
+    default: Dockerfile
+  image-name:
+    default: ""
+  registry:
+    default: ghcr.io
+  push:
+    default: auto
+  skip-stages:
+    default: ""
+  app-port:
+    default: ""
+  dast-target-url:
+    default: ""
+  sign:
+    default: keyless
+  default-branch:
+    default: main
+outputs:
+  stack:
+    value: ${{ steps.plan.outputs.stack }}
+  package-manager:
+    value: ${{ steps.plan.outputs.package-manager }}
+  toolchain-version:
+    value: ${{ steps.plan.outputs.toolchain-version }}
+  has-dockerfile:
+    value: ${{ steps.plan.outputs.has-dockerfile }}
+  has-iac:
+    value: ${{ steps.plan.outputs.has-iac }}
+  image-name:
+    value: ${{ steps.plan.outputs.image-name }}
+  push:
+    value: ${{ steps.plan.outputs.push }}
+  dast-mode:
+    value: ${{ steps.plan.outputs.dast-mode }}
+  dast-skip-reason:
+    value: ${{ steps.plan.outputs.dast-skip-reason }}
+  slug:
+    value: ${{ steps.plan.outputs.slug }}
+  stages:
+    value: ${{ steps.plan.outputs.stages }}
+runs:
+  using: composite
+  steps:
+    - id: plan
+      shell: bash
+      env:
+        WD: ${{ inputs.working-directory }}
+        SRC: ${{ inputs.source-root }}
+        STACK: ${{ inputs.stack }}
+        TOOLCHAIN: ${{ inputs.toolchain-version }}
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        REGISTRY: ${{ inputs.registry }}
+        PUSH: ${{ inputs.push }}
+        SKIP: ${{ inputs.skip-stages }}
+        APP_PORT: ${{ inputs.app-port }}
+        DAST_URL: ${{ inputs.dast-target-url }}
+        SIGN: ${{ inputs.sign }}
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../.." && pwd)"
+        python3 "$ROOT/scripts/detect.py" --dir "$SRC/$WD" --working-directory "$WD" --stack "$STACK" \
+          --toolchain-version "$TOOLCHAIN" --dockerfile "$DOCKERFILE" --image-name "$IMAGE_NAME" \
+          --registry "$REGISTRY" --push "$PUSH" --skip-stages "$SKIP" --app-port "$APP_PORT" \
+          --dast-target-url "$DAST_URL" --sign "$SIGN" | tee -a "$GITHUB_OUTPUT" > plan.txt
+        {
+          echo "### Plan (\`$WD\`)"
+          echo
+          echo '| key | value |'
+          echo '|---|---|'
+          sed 's/^\([^=]*\)=\(.*\)$/| \1 | `\2` |/' plan.txt
+        } >> "$GITHUB_STEP_SUMMARY"
