@@ -1,0 +1,52 @@
+name: go stack
+description: Go toolchain + modules; optionally build or test (phase).
+inputs:
+  working-directory:
+    default: source
+  version:
+    description: Empty means the go directive of go.mod
+    default: ""
+  package-manager:
+    default: gomod
+  phase:
+    description: setup | build | test
+    default: setup
+  command:
+    default: ""
+runs:
+  using: composite
+  steps:
+    - id: cfg
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ -f go.sum ]; then echo "cache=true"; else echo "cache=false"; fi >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version: ${{ inputs.version }}
+        go-version-file: ${{ inputs.working-directory }}/go.mod
+        cache: ${{ steps.cfg.outputs.cache }}
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+    - name: download modules
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: go mod download
+    - name: build
+      if: inputs.phase == 'build'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; else go build ./...; fi
+    - name: test
+      if: inputs.phase == 'test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; else go vet ./... && go test ./... -count=1; fi

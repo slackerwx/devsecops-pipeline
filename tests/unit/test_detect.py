@@ -82,6 +82,11 @@ class DetectStackTest(unittest.TestCase):
         self.assertEqual(detect.package_manager("python", root), "pip")
         self.assertEqual(detect.toolchain_version("python", root, ""), "3.12")
 
+    def test_go_fixture(self):
+        root = Path("tests/fixtures/go")
+        self.assertEqual(detect.detect_stack(root), "go")
+        self.assertEqual(detect.package_manager("go", root), "gomod")
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):
