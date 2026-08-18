@@ -1,0 +1,231 @@
+name: devsecops-pipeline
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: auto | node | python | go | java | dotnet
+        type: string
+        default: auto
+      working-directory:
+        description: App root inside the repository
+        type: string
+        default: "."
+      mode:
+        description: enforce | audit
+        type: string
+        default: enforce
+      runner:
+        description: runs-on label
+        type: string
+        default: ubuntu-latest
+      toolchain-version:
+        description: Overrides the detected toolchain version
+        type: string
+        default: ""
+      build-command:
+        type: string
+        default: ""
+      test-command:
+        type: string
+        default: ""
+      skip-stages:
+        description: Comma list of build,test,secrets,sast,sca,iac,image,dast,sign
+        type: string
+        default: ""
+      dockerfile:
+        type: string
+        default: Dockerfile
+      image-name:
+        description: Defaults to <registry>/<owner>/<repo>[/<slug>]
+        type: string
+        default: ""
+      registry:
+        type: string
+        default: ghcr.io
+      platforms:
+        type: string
+        default: linux/amd64
+      push:
+        description: auto | always | never
+        type: string
+        default: auto
+      build-args:
+        description: Multiline KEY=VALUE
+        type: string
+        default: ""
+      app-port:
+        description: Enables ephemeral DAST against the candidate image
+        type: string
+        default: ""
+      app-health-path:
+        type: string
+        default: /
+      app-env:
+        description: Multiline KEY=VALUE for the ephemeral container (non-secret)
+        type: string
+        default: ""
+      dast-target-url:
+        type: string
+        default: ""
+      fail-on:
+        description: Per-category thresholds
+        type: string
+        default: secrets=any,sast=high,sca=high,container=critical,iac=high,dast=high,license=none
+      ignore-unfixed:
+        type: boolean
+        default: true
+      semgrep-rulesets:
+        description: Comma list of p/ packs or paths; empty = pipeline defaults + stack pack
+        type: string
+        default: ""
+      sign:
+        description: keyless | key | none
+        type: string
+        default: keyless
+      cosign-signature-format:
+        description: legacy | bundle
+        type: string
+        default: legacy
+      pr-comment:
+        type: boolean
+        default: true
+      upload-sarif:
+        type: boolean
+        default: false
+      evidence-retention-days:
+        type: number
+        default: 30
+    secrets:
+      REGISTRY_USERNAME:
+        required: false
+      REGISTRY_PASSWORD:
+        required: false
+      COSIGN_PRIVATE_KEY:
+        required: false
+      COSIGN_PASSWORD:
+        required: false
+      EVIDENCE_WEBHOOK_URL:
+        required: false
+      EVIDENCE_WEBHOOK_TOKEN:
+        required: false
+
+permissions: {}
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      stack: ${{ steps.detect.outputs.stack }}
+      package-manager: ${{ steps.detect.outputs.package-manager }}
+      toolchain-version: ${{ steps.detect.outputs.toolchain-version }}
+      has-dockerfile: ${{ steps.detect.outputs.has-dockerfile }}
+      has-iac: ${{ steps.detect.outputs.has-iac }}
+      image-name: ${{ steps.detect.outputs.image-name }}
+      push: ${{ steps.detect.outputs.push }}
+      dast-mode: ${{ steps.detect.outputs.dast-mode }}
+      dast-skip-reason: ${{ steps.detect.outputs.dast-skip-reason }}
+      slug: ${{ steps.detect.outputs.slug }}
+      stages: ${{ steps.detect.outputs.stages }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - id: detect
+        uses: ./.pipeline/actions/detect
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          stack: ${{ inputs.stack }}
+          toolchain-version: ${{ inputs.toolchain-version }}
+          dockerfile: ${{ inputs.dockerfile }}
+          image-name: ${{ inputs.image-name }}
+          registry: ${{ inputs.registry }}
+          push: ${{ inputs.push }}
+          skip-stages: ${{ inputs.skip-stages }}
+          app-port: ${{ inputs.app-port }}
+          dast-target-url: ${{ inputs.dast-target-url }}
+          sign: ${{ inputs.sign }}
+          default-branch: ${{ github.event.repository.default_branch }}
+
+  build:
+    name: build
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.stages).build }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - if: needs.plan.outputs.stack == 'node'
+        uses: ./.pipeline/actions/stacks/node
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: build
+          command: ${{ inputs.build-command }}
+
+  test:
+    name: test
+    needs: [plan, build]
+    if: ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).test && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - if: needs.plan.outputs.stack == 'node'
+        uses: ./.pipeline/actions/stacks/node
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          version: ${{ needs.plan.outputs.toolchain-version }}
+          package-manager: ${{ needs.plan.outputs.package-manager }}
+          phase: test
+          command: ${{ inputs.test-command }}
+      - name: upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-test-reports
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.evidence-retention-days }}
+          path: |
+            source/${{ inputs.working-directory }}/**/junit*.xml
+            source/${{ inputs.working-directory }}/**/TEST-*.xml
+            source/${{ inputs.working-directory }}/**/*.trx
+            source/${{ inputs.working-directory }}/**/test-results/**/*.xml
+            source/${{ inputs.working-directory }}/**/coverage/**
+            source/${{ inputs.working-directory }}/**/coverage.xml
+            source/${{ inputs.working-directory }}/**/lcov.info
+            !source/${{ inputs.working-directory }}/**/node_modules/**
