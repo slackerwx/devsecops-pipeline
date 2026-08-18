@@ -1,0 +1,1 @@
+# no runtime dependencies on purpose; the vulnerable fixture is where CVEs live

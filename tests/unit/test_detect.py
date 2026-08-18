@@ -76,6 +76,12 @@ class DetectStackTest(unittest.TestCase):
         self.assertEqual(detect.toolchain_version("node", self.root, ""), "20.11.0")
         self.assertEqual(detect.toolchain_version("node", self.root, "22"), "22")
 
+    def test_python_fixture(self):
+        root = Path("tests/fixtures/python")
+        self.assertEqual(detect.detect_stack(root), "python")
+        self.assertEqual(detect.package_manager("python", root), "pip")
+        self.assertEqual(detect.toolchain_version("python", root, ""), "3.12")
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):
