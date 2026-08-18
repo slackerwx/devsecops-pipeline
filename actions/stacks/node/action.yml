@@ -1,0 +1,91 @@
+name: node stack
+description: Node.js toolchain + dependencies; optionally build or test (phase).
+inputs:
+  working-directory:
+    description: Directory of the app (already prefixed with source/ by the pipeline)
+    default: source
+  version:
+    default: "22"
+  package-manager:
+    description: npm | pnpm | yarn
+    default: npm
+  phase:
+    description: setup | build | test
+    default: setup
+  command:
+    description: Overrides the default build/test command
+    default: ""
+runs:
+  using: composite
+  steps:
+    - id: pm
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+      run: | # zizmor: ignore[adhoc-packages] corepack version comes from config/versions.env; no lockfile applies to a global install
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        case "$PM" in
+          pnpm) lock=pnpm-lock.yaml ;;
+          yarn) lock=yarn.lock ;;
+          *) lock=package-lock.json ;;
+        esac
+        echo "lock=$(pwd)/$lock" >> "$GITHUB_OUTPUT"
+        if [ "$PM" != npm ]; then
+          if ! command -v corepack >/dev/null 2>&1; then npm install -g "corepack@${COREPACK_VERSION}"; fi
+          corepack enable
+          declared="$(node -p "require('./package.json').packageManager || ''")"
+          if [ -z "$declared" ]; then
+            [ "$PM" = pnpm ] && corepack prepare "pnpm@${PNPM_DEFAULT_VERSION}" --activate
+            [ "$PM" = yarn ] && corepack prepare "yarn@${YARN_DEFAULT_VERSION}" --activate
+          fi
+        fi
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      with:
+        node-version: ${{ inputs.version }}
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: ${{ steps.pm.outputs.lock }}
+    - name: install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+        case "$PM" in
+          pnpm) pnpm install --frozen-lockfile ;;
+          yarn) if yarn --version | grep -q '^1\.'; then yarn install --frozen-lockfile; else yarn install --immutable; fi ;;
+          *) npm ci ;;
+        esac
+    - name: build
+      if: inputs.phase == 'build'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        if node -e "process.exit((require('./package.json').scripts||{}).build ? 0 : 1)"; then
+          "$PM" run build
+        else
+          echo "::notice::no build script in package.json; nothing to build"
+        fi
+    - name: test
+      if: inputs.phase == 'test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        script="$(node -p "(require('./package.json').scripts||{}).test || ''")"
+        case "$script" in
+          ""|*"no test specified"*) echo "::notice::no test script in package.json; tests skipped"; echo "- tests: none found" >> "$GITHUB_STEP_SUMMARY" ;;
+          *) "$PM" test ;;
+        esac
