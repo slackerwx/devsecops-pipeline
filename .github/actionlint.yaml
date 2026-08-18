@@ -1,0 +1,7 @@
+paths:
+  .github/workflows/pipeline.yml:
+    ignore:
+      # job.workflow_repository and job.workflow_sha identify the workflow file that defines the
+      # running job, which is how the reusable workflow checks its own repository out to .pipeline/.
+      # actionlint 1.7.12 (latest) still models the job context without them.
+      - 'property "workflow_(repository|sha)" is not defined in object type'

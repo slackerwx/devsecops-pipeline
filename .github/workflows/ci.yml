@@ -56,10 +56,31 @@ jobs:
           python-version: "3.12"
       - run: make unit
 
+  dogfood:
+    name: dogfood (${{ matrix.stack }})
+    needs: [lint, unit]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stack: node
+            port: "3000"
+    permissions:
+      contents: read
+      packages: write        # the image stage pushes the fixture image to GHCR
+      id-token: write        # keyless signing mints an OIDC token
+      pull-requests: write   # the evidence stage comments the findings summary on the PR
+    uses: ./.github/workflows/pipeline.yml
+    with:
+      working-directory: tests/fixtures/${{ matrix.stack }}
+      app-port: ${{ matrix.port }}
+      image-name: ghcr.io/${{ github.repository }}/fixture-${{ matrix.stack }}
+      push: ${{ github.event_name == 'push' && 'always' || 'never' }}
+
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [lint, unit]
+    needs: [lint, unit, dogfood]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
