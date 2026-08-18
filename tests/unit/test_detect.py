@@ -93,6 +93,11 @@ class DetectStackTest(unittest.TestCase):
         self.assertEqual(detect.package_manager("java", root), "maven")
         self.assertEqual(detect.toolchain_version("java", root, ""), "21")
 
+    def test_dotnet_fixture(self):
+        root = Path("tests/fixtures/dotnet")
+        self.assertEqual(detect.detect_stack(root), "dotnet")
+        self.assertEqual(detect.toolchain_version("dotnet", root, ""), "8.0.x")
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):
