@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Keeps the devsecops-pipeline workflow reference pinned to a commit SHA and bumps it on new releases.",
+  "extends": ["helpers:pinGitHubActionDigests"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["slackerwx/devsecops-pipeline"],
+      "groupName": "devsecops-pipeline",
+      "pinDigests": true,
+      "automerge": false
+    }
+  ]
+}

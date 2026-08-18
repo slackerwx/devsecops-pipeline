@@ -1,0 +1,28 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:recommended", "helpers:pinGitHubActionDigests", ":dependencyDashboard"],
+  timezone: "America/Sao_Paulo",
+  labels: ["dependencies"],
+  automerge: false,
+  packageRules: [
+    { matchManagers: ["github-actions"], groupName: "github actions", pinDigests: true },
+    { matchManagers: ["custom.regex"], matchDatasources: ["docker"], groupName: "scanner images" },
+    { matchManagers: ["pip_requirements"], groupName: "dev tools" },
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "tag@digest images in config/versions.env",
+      managerFilePatterns: ["/^config/versions\\.env$/"],
+      matchStrings: ["^(?<depName>[A-Z_]+_IMAGE)=(?<packageName>[^:\\s]+):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})\\s*$"],
+      datasourceTemplate: "docker",
+    },
+    {
+      customType: "regex",
+      description: "renovate: comments above KEY=value lines in config/versions.env and action.yml files",
+      managerFilePatterns: ["/^config/versions\\.env$/", "/(^|/)action\\.yml$/"],
+      matchStrings: ["# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)( versioning=(?<versioning>[^\\s]+))?\\s*\\n\\s*[A-Za-z_-]+[=:] ?[\"']?v?(?<currentValue>[^\\s\"']+)"],
+      versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}",
+    },
+  ],
+}
