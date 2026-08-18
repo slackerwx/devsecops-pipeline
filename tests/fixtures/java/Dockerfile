@@ -1,0 +1,14 @@
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /src
+COPY pom.xml .
+RUN mvn -B -ntp -q dependency:go-offline
+COPY src ./src
+RUN mvn -B -ntp -q package -DskipTests
+
+FROM eclipse-temurin:21-jre
+RUN useradd -r -u 10001 app
+USER 10001
+WORKDIR /app
+COPY --from=build /src/target/fixture-java.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]

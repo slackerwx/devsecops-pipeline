@@ -76,6 +76,28 @@ class DetectStackTest(unittest.TestCase):
         self.assertEqual(detect.toolchain_version("node", self.root, ""), "20.11.0")
         self.assertEqual(detect.toolchain_version("node", self.root, "22"), "22")
 
+    def test_python_fixture(self):
+        root = Path("tests/fixtures/python")
+        self.assertEqual(detect.detect_stack(root), "python")
+        self.assertEqual(detect.package_manager("python", root), "pip")
+        self.assertEqual(detect.toolchain_version("python", root, ""), "3.12")
+
+    def test_go_fixture(self):
+        root = Path("tests/fixtures/go")
+        self.assertEqual(detect.detect_stack(root), "go")
+        self.assertEqual(detect.package_manager("go", root), "gomod")
+
+    def test_java_fixture(self):
+        root = Path("tests/fixtures/java")
+        self.assertEqual(detect.detect_stack(root), "java")
+        self.assertEqual(detect.package_manager("java", root), "maven")
+        self.assertEqual(detect.toolchain_version("java", root, ""), "21")
+
+    def test_dotnet_fixture(self):
+        root = Path("tests/fixtures/dotnet")
+        self.assertEqual(detect.detect_stack(root), "dotnet")
+        self.assertEqual(detect.toolchain_version("dotnet", root, ""), "8.0.x")
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):

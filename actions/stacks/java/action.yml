@@ -1,0 +1,63 @@
+name: java stack
+description: Java toolchain (Temurin) with Maven or Gradle; optionally build or test (phase).
+inputs:
+  working-directory:
+    default: source
+  version:
+    default: "21"
+  package-manager:
+    description: maven | gradle
+    default: maven
+  phase:
+    description: setup | build | test
+    default: setup
+  command:
+    default: ""
+runs:
+  using: composite
+  steps:
+    - id: cfg
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+        WD: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ "$PM" = gradle ]; then
+          { echo "deps<<EOF"; echo "$WD/**/*.gradle*"; echo "$WD/**/gradle-wrapper.properties"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          if [ -x ./gradlew ]; then echo "tool=./gradlew"; else echo "tool=gradle"; fi >> "$GITHUB_OUTPUT"
+        else
+          echo "deps=$WD/**/pom.xml" >> "$GITHUB_OUTPUT"
+          if [ -x ./mvnw ]; then echo "tool=./mvnw"; else echo "tool=mvn"; fi >> "$GITHUB_OUTPUT"
+        fi
+    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.version }}
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: ${{ steps.cfg.outputs.deps }}
+    - name: build
+      if: inputs.phase == 'build'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+        TOOL: ${{ steps.cfg.outputs.tool }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        if [ "$PM" = gradle ]; then "$TOOL" build -x test --no-daemon; else "$TOOL" -B -ntp package -DskipTests; fi
+    - name: test
+      if: inputs.phase == 'test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+        TOOL: ${{ steps.cfg.outputs.tool }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        if [ "$PM" = gradle ]; then "$TOOL" test --no-daemon; else "$TOOL" -B -ntp test; fi

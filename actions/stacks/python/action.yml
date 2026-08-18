@@ -1,0 +1,108 @@
+name: python stack
+description: Python toolchain + dependencies; optionally build or test (phase).
+inputs:
+  working-directory:
+    default: source
+  version:
+    default: "3.12"
+  package-manager:
+    description: pip | uv | poetry
+    default: pip
+  phase:
+    description: setup | build | test
+    default: setup
+  command:
+    default: ""
+runs:
+  using: composite
+  steps:
+    - id: cfg
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        echo "poetry-version=$POETRY_VERSION" >> "$GITHUB_OUTPUT"
+        echo "uv-version=$UV_VERSION" >> "$GITHUB_OUTPUT"
+        cache=""; dep=""
+        case "$PM" in
+          poetry) cache=poetry; dep="$(pwd)/poetry.lock" ;;
+          pip) if ls requirements*.txt >/dev/null 2>&1; then cache=pip; dep="$(pwd)/$(ls requirements*.txt | head -n1)"; fi ;;
+        esac
+        echo "cache=$cache" >> "$GITHUB_OUTPUT"
+        echo "dep=$dep" >> "$GITHUB_OUTPUT"
+        case "$PM" in uv) echo "run=uv run" ;; poetry) echo "run=poetry run" ;; *) echo "run=" ;; esac >> "$GITHUB_OUTPUT"
+    - if: inputs.package-manager == 'poetry'
+      shell: bash
+      env:
+        POETRY_VERSION: ${{ steps.cfg.outputs.poetry-version }}
+      run: pipx install "poetry==${POETRY_VERSION}"
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        python-version: ${{ inputs.version }}
+        cache: ${{ steps.cfg.outputs.cache }}
+        cache-dependency-path: ${{ steps.cfg.outputs.dep }}
+    - if: inputs.package-manager == 'uv'
+      uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      with:
+        version: ${{ steps.cfg.outputs.uv-version }}
+        enable-cache: true
+        cache-dependency-glob: ${{ inputs.working-directory }}/uv.lock
+    - name: install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PM: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+        case "$PM" in
+          uv) uv sync --frozen ;;
+          poetry) poetry install --no-interaction --no-ansi ;;
+          *)
+            python -m pip install --quiet --upgrade pip
+            if ls requirements*.txt >/dev/null 2>&1; then
+              for f in requirements*.txt; do python -m pip install --quiet -r "$f"; done
+            elif [ -f pyproject.toml ] && grep -q '^\[build-system\]' pyproject.toml; then
+              python -m pip install --quiet .
+            else
+              echo "::notice::no requirements*.txt or buildable pyproject.toml; nothing to install"
+            fi ;;
+        esac
+    - name: build
+      if: inputs.phase == 'build'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RUN: ${{ steps.cfg.outputs.run }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        $RUN python -m compileall -q -x '(\.venv|venv|node_modules|\.git|build|dist)' .
+    - name: test
+      if: inputs.phase == 'test'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RUN: ${{ steps.cfg.outputs.run }}
+        CMD: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$CMD" ]; then bash -c "$CMD"; exit 0; fi
+        mkdir -p reports
+        set +e
+        if $RUN python -c "import pytest" >/dev/null 2>&1; then
+          $RUN python -m pytest -q --junitxml=reports/junit.xml
+        else
+          $RUN python -m unittest discover -v
+        fi
+        rc=$?
+        set -e
+        case "$rc" in
+          0) ;;
+          5) echo "::notice::no tests found"; echo "- tests: none found" >> "$GITHUB_STEP_SUMMARY" ;;
+          *) exit "$rc" ;;
+        esac
