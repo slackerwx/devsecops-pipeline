@@ -1,0 +1,43 @@
+name: gate
+description: Evaluate one findings category against its threshold; fails the job in enforce mode.
+inputs:
+  category:
+    required: true
+  findings:
+    description: Partial findings-<category>.json (the gate result is written back into it)
+    required: true
+  fail-on:
+    default: ""
+  mode:
+    description: enforce | audit
+    default: enforce
+outputs:
+  result:
+    description: pass | fail
+    value: ${{ steps.gate.outputs.result }}
+runs:
+  using: composite
+  steps:
+    - id: gate
+      shell: bash
+      env:
+        CATEGORY: ${{ inputs.category }}
+        FINDINGS: ${{ inputs.findings }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -uo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        line="$(python3 "$ROOT/scripts/gate.py" category --findings "$FINDINGS" --fail-on "$FAIL_ON")"
+        rc=$?
+        echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
+        case "$rc" in
+          0) result=pass ;;
+          1) result=fail ;;
+          *) echo "::error::gate: usage error (rc=$rc)"; exit "$rc" ;;
+        esac
+        echo "result=$result" >> "$GITHUB_OUTPUT"
+        if [ "$result" = fail ]; then
+          if [ "$MODE" = enforce ]; then echo "::error::$CATEGORY gate failed (mode=enforce)"; exit 1; fi
+          echo "::warning::$CATEGORY gate would fail (mode=audit)"
+        fi

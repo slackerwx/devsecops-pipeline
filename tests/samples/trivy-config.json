@@ -1,0 +1,13 @@
+{
+  "Results": [
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {"ID": "DS002", "Title": "Image user should not be 'root'", "Severity": "HIGH", "Message": "Specify at least 1 USER command in Dockerfile with non-root user as argument", "PrimaryURL": "https://avd.aquasec.com/misconfig/ds002", "CauseMetadata": {"StartLine": 1, "EndLine": 1}},
+        {"ID": "DS026", "Title": "No HEALTHCHECK defined", "Severity": "LOW", "Message": "Add HEALTHCHECK instruction in your Dockerfile", "PrimaryURL": "https://avd.aquasec.com/misconfig/ds026", "CauseMetadata": {}}
+      ]
+    }
+  ]
+}

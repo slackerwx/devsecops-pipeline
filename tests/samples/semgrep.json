@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "check_id": "javascript.express.security.audit.xss.direct-response-write",
+      "path": "server.js",
+      "start": {"line": 12, "col": 3},
+      "end": {"line": 12, "col": 44},
+      "extra": {
+        "message": "Detected directly writing to a response from user input, possible XSS.",
+        "severity": "WARNING",
+        "metadata": {"source": "https://semgrep.dev/r/javascript.express.security.audit.xss.direct-response-write", "impact": "MEDIUM"}
+      }
+    },
+    {
+      "check_id": "javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop",
+      "path": "server.js",
+      "start": {"line": 20, "col": 3},
+      "end": {"line": 22, "col": 4},
+      "extra": {"message": "Possible prototype pollution.", "severity": "ERROR", "metadata": {}}
+    }
+  ],
+  "errors": []
+}
