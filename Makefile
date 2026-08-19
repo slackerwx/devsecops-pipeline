@@ -2,7 +2,7 @@ PY ?= python3
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: venv lint unit actionlint zizmor yamllint ruff pinact check-pins resolve-pins inputs-doc
+.PHONY: venv lint unit actionlint zizmor yamllint ruff pinact check-pins resolve-pins inputs-doc check-docs
 
 venv: $(BIN)/ruff
 
@@ -12,7 +12,7 @@ $(BIN)/ruff: requirements-dev.txt
 	$(BIN)/pip install --quiet -r requirements-dev.txt
 	touch $(BIN)/ruff
 
-lint: venv actionlint zizmor yamllint ruff pinact check-pins
+lint: venv actionlint zizmor yamllint ruff pinact check-pins check-docs
 
 actionlint: venv
 	$(BIN)/actionlint -color
@@ -45,3 +45,6 @@ unit: venv
 
 inputs-doc: venv
 	$(BIN)/python scripts/gen_inputs_doc.py --write
+
+check-docs: venv
+	$(BIN)/python scripts/gen_inputs_doc.py --check

@@ -112,16 +112,22 @@ on:
         default: 30
     secrets:
       REGISTRY_USERNAME:
+        description: Registry user when not GHCR with GITHUB_TOKEN (Zot, Harbor, Docker Hub)
         required: false
       REGISTRY_PASSWORD:
+        description: Registry password/token paired with REGISTRY_USERNAME
         required: false
       COSIGN_PRIVATE_KEY:
+        description: PEM private key for sign=key
         required: false
       COSIGN_PASSWORD:
+        description: Password of COSIGN_PRIVATE_KEY
         required: false
       EVIDENCE_WEBHOOK_URL:
+        description: Base URL of the evidence webhook; presence enables it (see docs/evidence-webhook.md)
         required: false
       EVIDENCE_WEBHOOK_TOKEN:
+        description: Bearer token for the evidence webhook
         required: false
     outputs:
       image:
