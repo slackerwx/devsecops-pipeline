@@ -90,10 +90,9 @@ jobs:
       push: ${{ github.event_name == 'push' && 'always' || 'never' }}
       # Gitleaks runs in git mode over the whole repository history, so every dogfood run
       # sees tests/fixtures/vulnerable-node/secrets/fake_id_rsa — the key the audit-mode
-      # dogfood-vulnerable job is meant to catch. Scoping is not possible (the scan is
-      # repo-global by design), so these enforce-mode runs report it without gating on it;
-      # dogfood-vulnerable is what asserts the secrets gate actually fires.
-      fail-on: secrets=none
+      # dogfood-vulnerable job is meant to catch. Allowlisting that one path keeps the
+      # default secrets=any threshold enforcing for every other secret in this repo.
+      gitleaks-config: .gitleaks-ci-allowlist.toml
 
   dogfood-vulnerable:
     name: dogfood (vulnerable-node, audit)

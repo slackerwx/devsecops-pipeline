@@ -85,6 +85,10 @@ on:
       ignore-unfixed:
         type: boolean
         default: true
+      gitleaks-config:
+        description: Gitleaks config for the secrets stage, relative to the repository root; empty = Gitleaks defaults
+        type: string
+        default: ""
       semgrep-rulesets:
         description: Comma list of p/ packs or paths; empty = pipeline defaults + stack pack
         type: string
@@ -349,6 +353,7 @@ jobs:
         uses: ./.pipeline/actions/security/secrets/gitleaks
         with:
           working-directory: source
+          config: ${{ inputs.gitleaks-config }}
       - if: always() && steps.scan.outputs.output-dir != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
