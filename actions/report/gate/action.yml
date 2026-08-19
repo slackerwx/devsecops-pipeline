@@ -28,8 +28,13 @@ runs:
       run: |
         set -uo pipefail
         ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        # `shell: bash` runs with errexit, and gate.py exits 1 for a failing gate — a normal
+        # outcome that this step has to interpret, not die on. Without dropping errexit across
+        # the call the step aborts here and audit mode can never downgrade the failure.
+        set +e
         line="$(python3 "$ROOT/scripts/gate.py" category --findings "$FINDINGS" --fail-on "$FAIL_ON")"
         rc=$?
+        set -e
         echo "$line" | tee -a "$GITHUB_STEP_SUMMARY"
         case "$rc" in
           0) result=pass ;;

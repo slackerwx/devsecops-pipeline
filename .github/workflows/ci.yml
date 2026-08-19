@@ -37,6 +37,9 @@ jobs:
           set -a; . config/versions.env; set +a
           shopt -s nullglob
           for f in tests/fixtures/*/Dockerfile; do
+            # the vulnerable fixture's Dockerfile is bad on purpose; the pipeline's own
+            # audit-mode dogfood run is what asserts hadolint/trivy flag it
+            case "$f" in *vulnerable*) continue ;; esac
             echo "== $f"
             docker run --rm -i "$HADOLINT_IMAGE" hadolint - < "$f"
           done
@@ -85,11 +88,54 @@ jobs:
       app-port: ${{ matrix.port }}
       image-name: ghcr.io/${{ github.repository }}/fixture-${{ matrix.stack }}
       push: ${{ github.event_name == 'push' && 'always' || 'never' }}
+      # Gitleaks runs in git mode over the whole repository history, so every dogfood run
+      # sees tests/fixtures/vulnerable-node/secrets/fake_id_rsa — the key the audit-mode
+      # dogfood-vulnerable job is meant to catch. Scoping is not possible (the scan is
+      # repo-global by design), so these enforce-mode runs report it without gating on it;
+      # dogfood-vulnerable is what asserts the secrets gate actually fires.
+      fail-on: secrets=none
+
+  dogfood-vulnerable:
+    name: dogfood (vulnerable-node, audit)
+    needs: [lint, unit]
+    permissions:
+      contents: read
+      packages: write        # the image stage pushes the fixture image to GHCR
+      id-token: write        # keyless signing mints an OIDC token
+      pull-requests: write   # the evidence stage comments the findings summary on the PR
+      security-events: write # the evidence stage can upload the consolidated SARIF to code scanning
+    uses: ./.github/workflows/pipeline.yml
+    with:
+      working-directory: tests/fixtures/vulnerable-node
+      mode: audit
+      push: never
+      pr-comment: false
+
+  dogfood-assert:
+    name: dogfood-assert
+    needs: dogfood-vulnerable
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: audit run stays green but reports the planted findings
+        env:
+          RESULT: ${{ needs.dogfood-vulnerable.result }}
+          VERDICT: ${{ needs.dogfood-vulnerable.outputs.verdict }}
+          FAILED: ${{ needs.dogfood-vulnerable.outputs.failed-categories }}
+        run: |
+          set -euo pipefail
+          echo "result=$RESULT verdict=$VERDICT failed=$FAILED"
+          [ "$RESULT" = success ] || { echo "audit-mode run must succeed"; exit 1; }
+          [ "$VERDICT" = fail ] || { echo "expected verdict=fail"; exit 1; }
+          for c in secrets sca iac; do
+            echo "$FAILED" | tr ',' '\n' | grep -qx "$c" || { echo "expected $c among failed categories"; exit 1; }
+          done
 
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [lint, unit, dogfood]
+    needs: [lint, unit, dogfood, dogfood-assert]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
