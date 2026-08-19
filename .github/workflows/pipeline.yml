@@ -477,6 +477,7 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
       tags: ${{ steps.build.outputs.tags }}
       pushed: ${{ steps.push.outputs.pushed || 'false' }}
+      sbom-artifact: ${{ steps.push.outputs.pushed == 'true' && format('devsecops-{0}-sbom', needs.plan.outputs.slug) || '' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -540,4 +541,64 @@ jobs:
         with:
           name: devsecops-${{ needs.plan.outputs.slug }}-image
           path: ${{ steps.push.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+      - id: sbom
+        if: steps.push.outputs.pushed == 'true'
+        uses: ./.pipeline/actions/supply-chain/sbom/syft
+        with:
+          image: ${{ needs.plan.outputs.image-name }}
+          digest: ${{ steps.push.outputs.digest }}
+          output-dir: ${{ runner.temp }}/devsecops/sbom
+      - if: steps.push.outputs.pushed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-sbom
+          path: ${{ steps.sbom.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+
+  sign:
+    name: sign
+    needs: [plan, image]
+    if: ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).sign && needs.image.result == 'success' && needs.image.outputs.pushed == 'true' }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write   # cosign attaches the signature and the SBOM attestation to the pushed image
+      id-token: write   # keyless signing mints a short-lived OIDC token for Fulcio
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+    env:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.image.outputs.sbom-artifact }}
+          path: sbom
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || github.token }}
+      - id: sign
+        uses: ./.pipeline/actions/supply-chain/sign/cosign
+        with:
+          image: ${{ needs.image.outputs.image }}
+          digest: ${{ needs.image.outputs.digest }}
+          mode: ${{ inputs.sign }}
+          format: ${{ inputs.cosign-signature-format }}
+          sbom: sbom/sbom.spdx.json
+          output-dir: ${{ runner.temp }}/devsecops/sign
+      - if: always() && steps.sign.outputs.output-dir != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-sign
+          path: ${{ steps.sign.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}

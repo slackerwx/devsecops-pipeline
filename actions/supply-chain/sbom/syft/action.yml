@@ -1,0 +1,41 @@
+name: syft-sbom
+description: SBOM (SPDX JSON + CycloneDX JSON) of a pushed image, by digest, with Syft.
+inputs:
+  image:
+    required: true
+  digest:
+    required: true
+  output-dir:
+    default: ""
+outputs:
+  spdx:
+    value: ${{ steps.sbom.outputs.spdx }}
+  cyclonedx:
+    value: ${{ steps.sbom.outputs.cyclonedx }}
+  packages:
+    value: ${{ steps.sbom.outputs.packages }}
+  output-dir:
+    value: ${{ steps.sbom.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: sbom
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+        OUT_IN: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/sbom}"; mkdir -p "$OUT"; chmod 0777 "$OUT"
+        ver="${SYFT_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        mkdir -p "$HOME/.docker"
+        docker run --rm -e DOCKER_CONFIG=/dc -v "$HOME/.docker:/dc:ro" -v "$OUT:/out" "$SYFT_IMAGE" \
+          scan "registry:${IMAGE}@${DIGEST}" -q -o "spdx-json=/out/sbom.spdx.json" -o "cyclonedx-json=/out/sbom.cdx.json"
+        pkgs="$(jq '.packages | length' "$OUT/sbom.spdx.json")"
+        jq -n --arg image "$IMAGE" --arg digest "$DIGEST" --arg syft "$ver" --argjson packages "$pkgs" \
+          '{packages: $packages, format: "spdx-json", image: $image, digest: $digest, syft: $syft}' > "$OUT/sbom.json"
+        { echo "spdx=$OUT/sbom.spdx.json"; echo "cyclonedx=$OUT/sbom.cdx.json"; echo "packages=$pkgs"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"
+        echo "SBOM: $pkgs packages (spdx-json, cyclonedx-json)" >> "$GITHUB_STEP_SUMMARY"
