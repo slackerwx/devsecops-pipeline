@@ -1,0 +1,69 @@
+name: trivy-fs
+description: Dependency vulnerabilities and licences with Trivy (filesystem scan, JSON + SARIF).
+inputs:
+  working-directory:
+    default: source
+  ignore-unfixed:
+    default: "true"
+  output-dir:
+    default: ""
+outputs:
+  findings-sca:
+    value: ${{ steps.scan.outputs.findings-sca }}
+  findings-license:
+    value: ${{ steps.scan.outputs.findings-license }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: date
+      shell: bash
+      run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/trivy
+        key: trivy-db-${{ runner.os }}-${{ steps.date.outputs.today }}
+        restore-keys: |
+          trivy-db-${{ runner.os }}-
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        IGNORE_UNFIXED: ${{ inputs.ignore-unfixed }}
+        OUT_IN: ${{ inputs.output-dir }}
+        TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
+        TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1
+        TRIVY_TIMEOUT: 15m
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/sca}"; mkdir -p "$OUT" "$HOME/.cache/trivy"; chmod 0777 "$OUT"
+        ver="${TRIVY_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        flags=(); [ "$IGNORE_UNFIXED" = "true" ] && flags+=(--ignore-unfixed)
+        trivy() {
+          docker run --rm -v "$PWD:/src" -w /src -v "$OUT:/out" -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY -e TRIVY_TIMEOUT "$TRIVY_IMAGE" "$@"
+        }
+        status=ok; reason=""
+        set +e
+        trivy fs --scanners vuln,license --format json --output /out/trivy-fs.json --exit-code 0 "${flags[@]}" /src
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then status=error; reason="trivy fs exited $rc"; fi
+        [ -s "$OUT/trivy-fs.json" ] || echo '{"Results":[]}' > "$OUT/trivy-fs.json"
+        trivy convert --format sarif --output /out/trivy-fs.sarif /out/trivy-fs.json || true
+        python3 "$ROOT/scripts/normalize.py" --tool trivy-vuln --input "$OUT/trivy-fs.json" --category sca \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-sca.json"
+        python3 "$ROOT/scripts/normalize.py" --tool trivy-license --input "$OUT/trivy-fs.json" --category license \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-license.json"
+        [ -s "$OUT/trivy-fs.sarif" ] || python3 "$ROOT/scripts/sarif.py" --findings "$OUT/findings-sca.json" --out "$OUT/trivy-fs.sarif"
+        {
+          echo "findings-sca=$OUT/findings-sca.json"
+          echo "findings-license=$OUT/findings-license.json"
+          echo "sarif=$OUT/trivy-fs.sarif"
+          echo "output-dir=$OUT"
+        } >> "$GITHUB_OUTPUT"

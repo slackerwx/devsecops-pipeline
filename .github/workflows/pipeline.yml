@@ -366,3 +366,47 @@ jobs:
           findings: ${{ steps.scan.outputs.findings }}
           fail-on: ${{ inputs.fail-on }}
           mode: ${{ inputs.mode }}
+
+  sca:
+    name: sca
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.stages).sca }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - id: scan
+        uses: ./.pipeline/actions/security/sca/trivy-fs
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          ignore-unfixed: ${{ inputs.ignore-unfixed }}
+      - if: always() && steps.scan.outputs.output-dir != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-sca
+          path: ${{ steps.scan.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+          if-no-files-found: ignore
+      - uses: ./.pipeline/actions/report/gate
+        with:
+          category: license
+          findings: ${{ steps.scan.outputs.findings-license }}
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
+      - uses: ./.pipeline/actions/report/gate
+        with:
+          category: sca
+          findings: ${{ steps.scan.outputs.findings-sca }}
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
