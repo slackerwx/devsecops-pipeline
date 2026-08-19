@@ -22,15 +22,15 @@ def post(
     }
     last = ""
     for attempt in range(retries + 1):
-        req = urllib.request.Request(url, data=body, method="POST", headers=headers)
         try:
+            req = urllib.request.Request(url, data=body, method="POST", headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as res:
                 return True, f"HTTP {res.status}"
         except urllib.error.HTTPError as exc:
             last = f"HTTP {exc.code}"
             if 400 <= exc.code < 500:
                 return False, last
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
             last = str(exc)
         if attempt < retries:
             time.sleep(2 * (attempt + 1))

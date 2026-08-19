@@ -1,5 +1,15 @@
 name: devsecops-pipeline
 
+# Callers of this workflow must grant these permissions on the calling job
+# (GitHub Actions requires a called workflow's job permissions to be a subset
+# of the caller's):
+#   contents: read
+#   pull-requests: write     # evidence job comments the findings summary on PRs
+#   packages: write          # image job pushes the built image, sign job attaches the signature
+#   security-events: write   # evidence job can upload SARIF to code scanning when upload-sarif is true
+#   id-token: write          # sign job's keyless OIDC signing
+# Missing any of these fails the whole run at startup with zero jobs created,
+# not a normal job failure — see .github/workflows/ci.yml's dogfood job.
 on:
   workflow_call:
     inputs:
