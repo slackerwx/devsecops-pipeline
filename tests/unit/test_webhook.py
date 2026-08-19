@@ -84,6 +84,24 @@ class WebhookTest(unittest.TestCase):
             )
         self.assertEqual(Sink.calls, [])
 
+    def test_malformed_url_never_fails_the_job(self):
+        # A scheme-less URL makes urllib.request.Request() itself raise
+        # ValueError. That must be caught like any other post() failure,
+        # not propagate out of main().
+        with mock.patch.dict(
+            os.environ,
+            {"EVIDENCE_WEBHOOK_URL": "not-a-url", "EVIDENCE_WEBHOOK_TOKEN": "tok"},
+        ):
+            self.assertEqual(
+                webhook.main(["event", "--type", "x", "--payload", "{}"]), 0
+            )
+        self.assertEqual(Sink.calls, [])
+
+    def test_post_returns_failure_for_malformed_url(self):
+        ok, info = webhook.post("not-a-url", "tok", b"{}")
+        self.assertFalse(ok)
+        self.assertIn("unknown url type", info)
+
 
 if __name__ == "__main__":
     unittest.main()
