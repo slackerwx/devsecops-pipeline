@@ -109,6 +109,28 @@ on:
         required: false
       EVIDENCE_WEBHOOK_TOKEN:
         required: false
+    outputs:
+      image:
+        description: Image repository (no tag)
+        value: ${{ jobs.image.outputs.image }}
+      digest:
+        value: ${{ jobs.image.outputs.digest }}
+      tags:
+        description: Newline-separated tags
+        value: ${{ jobs.image.outputs.tags }}
+      pushed:
+        value: ${{ jobs.image.outputs.pushed }}
+      signed:
+        value: ${{ jobs.sign.outputs.signed }}
+      verdict:
+        description: pass | fail
+        value: ${{ jobs.evidence.outputs.verdict }}
+      failed-categories:
+        value: ${{ jobs.evidence.outputs.failed-categories }}
+      evidence-artifact:
+        value: ${{ jobs.evidence.outputs.evidence-artifact }}
+      sbom-artifact:
+        value: ${{ jobs.image.outputs.sbom-artifact }}
 
 permissions: {}
 
@@ -298,6 +320,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -321,6 +346,10 @@ jobs:
           path: ${{ steps.scan.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.scan.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.scan.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: secrets
@@ -336,6 +365,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -360,6 +392,10 @@ jobs:
           path: ${{ steps.scan.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.scan.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.scan.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: sast
@@ -375,6 +411,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -398,6 +437,10 @@ jobs:
           path: ${{ steps.scan.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.scan.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.scan.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: license
@@ -419,6 +462,9 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -449,6 +495,14 @@ jobs:
           path: ${{ steps.trivy.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.trivy.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.trivy.outputs.sarif }}
+      - if: always() && steps.hadolint.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.hadolint.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: iac
@@ -478,6 +532,9 @@ jobs:
       tags: ${{ steps.build.outputs.tags }}
       pushed: ${{ steps.push.outputs.pushed || 'false' }}
       sbom-artifact: ${{ steps.push.outputs.pushed == 'true' && format('devsecops-{0}-sbom', needs.plan.outputs.slug) || '' }}
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -511,6 +568,10 @@ jobs:
           path: ${{ steps.scan.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.scan.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.scan.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: container
@@ -537,6 +598,11 @@ jobs:
           scope: ${{ needs.plan.outputs.slug }}
           output-dir: ${{ runner.temp }}/devsecops/image
       - if: steps.push.outputs.pushed == 'true'
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          event-type: image.pushed
+          payload: ${{ format('{{"image":"{0}","digest":"{1}"}}', steps.push.outputs.primary-tag, steps.push.outputs.digest) }}
+      - if: steps.push.outputs.pushed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: devsecops-${{ needs.plan.outputs.slug }}-image
@@ -549,6 +615,11 @@ jobs:
           image: ${{ needs.plan.outputs.image-name }}
           digest: ${{ steps.push.outputs.digest }}
           output-dir: ${{ runner.temp }}/devsecops/sbom
+      - if: steps.push.outputs.pushed == 'true'
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          event-type: sbom.created
+          payload: ${{ format('{{"packages":{0},"format":"spdx-json"}}', steps.sbom.outputs.packages) }}
       - if: steps.push.outputs.pushed == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -568,6 +639,9 @@ jobs:
     permissions:
       contents: read
       packages: read    # pulls the candidate image back from the registry to run it as an ephemeral target
+    env:
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -602,6 +676,10 @@ jobs:
           path: ${{ steps.scan.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
           if-no-files-found: ignore
+      - if: always() && steps.scan.outputs.sarif != ''
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          sarif: ${{ steps.scan.outputs.sarif }}
       - uses: ./.pipeline/actions/report/gate
         with:
           category: dast
@@ -627,6 +705,8 @@ jobs:
     env:
       COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
       COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -652,9 +732,67 @@ jobs:
           format: ${{ inputs.cosign-signature-format }}
           sbom: sbom/sbom.spdx.json
           output-dir: ${{ runner.temp }}/devsecops/sign
+      - if: steps.sign.outputs.signed == 'true'
+        uses: ./.pipeline/actions/report/webhook
+        with:
+          event-type: image.signed
+          payload: ${{ format('{{"digest":"{0}","issuer":"{1}"}}', needs.image.outputs.digest, steps.sign.outputs.issuer) }}
       - if: always() && steps.sign.outputs.output-dir != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: devsecops-${{ needs.plan.outputs.slug }}-sign
           path: ${{ steps.sign.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+
+  evidence:
+    name: evidence
+    needs: [plan, build, test, secrets, sast, sca, iac, image, dast, sign]
+    if: ${{ always() }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write     # keeps the sticky findings comment up to date on the pull request
+      security-events: write   # uploads the consolidated SARIF to GitHub code scanning when upload-sarif is on
+    outputs:
+      verdict: ${{ steps.ev.outputs.verdict }}
+      failed-categories: ${{ steps.ev.outputs.failed-categories }}
+      evidence-artifact: devsecops-${{ needs.plan.outputs.slug }}-evidence
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EVIDENCE_WEBHOOK_URL: ${{ secrets.EVIDENCE_WEBHOOK_URL }}
+      EVIDENCE_WEBHOOK_TOKEN: ${{ secrets.EVIDENCE_WEBHOOK_TOKEN }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: devsecops-${{ needs.plan.outputs.slug }}-*
+          path: evidence
+          merge-multiple: false
+      - id: ev
+        uses: ./.pipeline/actions/report/evidence
+        with:
+          evidence-dir: evidence
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
+          stack: ${{ needs.plan.outputs.stack }}
+          working-directory: ${{ inputs.working-directory }}
+          stages: ${{ needs.plan.outputs.stages }}
+          slug: ${{ needs.plan.outputs.slug }}
+          pr-comment: ${{ inputs.pr-comment }}
+          pr-number: ${{ github.event.pull_request.number }}
+      - if: inputs.upload-sarif
+        uses: github/codeql-action/upload-sarif@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3.37.7
+        with:
+          sarif_file: evidence/sarif
+          category: devsecops-${{ needs.plan.outputs.slug }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-evidence
+          path: evidence
           retention-days: ${{ inputs.evidence-retention-days }}

@@ -1,0 +1,23 @@
+name: evidence webhook
+description: POST a SARIF file and/or an event to the evidence webhook. No-op when EVIDENCE_WEBHOOK_URL is empty; never fails.
+inputs:
+  sarif:
+    default: ""
+  event-type:
+    default: ""
+  payload:
+    description: JSON object
+    default: "{}"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SARIF: ${{ inputs.sarif }}
+        TYPE: ${{ inputs.event-type }}
+        PAYLOAD: ${{ inputs.payload }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        if [ -n "$SARIF" ]; then python3 "$ROOT/scripts/webhook.py" sarif --file "$SARIF"; fi
+        if [ -n "$TYPE" ]; then python3 "$ROOT/scripts/webhook.py" event --type "$TYPE" --payload "$PAYLOAD"; fi
