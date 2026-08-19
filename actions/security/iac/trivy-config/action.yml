@@ -1,0 +1,53 @@
+name: trivy-config
+description: IaC misconfiguration scan with Trivy (Dockerfile, Kubernetes, Helm, Terraform, Compose).
+inputs:
+  working-directory:
+    default: source
+  output-dir:
+    default: ""
+outputs:
+  findings:
+    value: ${{ steps.scan.outputs.findings }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: date
+      shell: bash
+      run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/trivy
+        key: trivy-db-${{ runner.os }}-${{ steps.date.outputs.today }}
+        restore-keys: |
+          trivy-db-${{ runner.os }}-
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        OUT_IN: ${{ inputs.output-dir }}
+        TRIVY_TIMEOUT: 15m
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/iac}"; mkdir -p "$OUT" "$HOME/.cache/trivy"; chmod 0777 "$OUT"
+        ver="${TRIVY_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        trivy() {
+          docker run --rm -v "$PWD:/src" -w /src -v "$OUT:/out" -v "$HOME/.cache/trivy:/root/.cache/trivy" -e TRIVY_TIMEOUT "$TRIVY_IMAGE" "$@"
+        }
+        status=ok; reason=""
+        set +e
+        trivy config --format json --output /out/trivy-config.json --exit-code 0 /src
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then status=error; reason="trivy config exited $rc"; fi
+        [ -s "$OUT/trivy-config.json" ] || echo '{"Results":[]}' > "$OUT/trivy-config.json"
+        trivy convert --format sarif --output /out/trivy-config.sarif /out/trivy-config.json || true
+        python3 "$ROOT/scripts/normalize.py" --tool trivy-misconfig --input "$OUT/trivy-config.json" --category iac \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-iac.json"
+        [ -s "$OUT/trivy-config.sarif" ] || python3 "$ROOT/scripts/sarif.py" --findings "$OUT/findings-iac.json" --out "$OUT/trivy-config.sarif"
+        { echo "findings=$OUT/findings-iac.json"; echo "sarif=$OUT/trivy-config.sarif"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"

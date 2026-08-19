@@ -1,0 +1,53 @@
+name: hadolint
+description: Dockerfile lint with Hadolint (JSON + SARIF); merges into findings-iac.json when append is true.
+inputs:
+  working-directory:
+    default: source
+  dockerfile:
+    default: Dockerfile
+  output-dir:
+    default: ""
+  append:
+    description: Merge into an existing findings-iac.json in output-dir
+    default: "true"
+outputs:
+  findings:
+    value: ${{ steps.scan.outputs.findings }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        OUT_IN: ${{ inputs.output-dir }}
+        APPEND: ${{ inputs.append }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/iac}"; mkdir -p "$OUT"; chmod 0777 "$OUT"
+        ver="${HADOLINT_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        extra=(); [ "$APPEND" = "true" ] && extra+=(--append)
+        if [ ! -f "$DOCKERFILE" ]; then
+          python3 "$ROOT/scripts/normalize.py" --tool hadolint --input /dev/null --category iac --tool-version "$ver" \
+            --status skipped --reason "no $DOCKERFILE" --out "$OUT/findings-iac.json" "${extra[@]}"
+          { echo "findings=$OUT/findings-iac.json"; echo "sarif="; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        status=ok; reason=""
+        set +e
+        docker run --rm -v "$PWD:/src" -w /src "$HADOLINT_IMAGE" hadolint -f json "$DOCKERFILE" > "$OUT/hadolint.json"
+        rc=$?
+        docker run --rm -v "$PWD:/src" -w /src "$HADOLINT_IMAGE" hadolint -f sarif "$DOCKERFILE" > "$OUT/hadolint.sarif"
+        set -e
+        case "$rc" in 0|1) ;; *) status=error; reason="hadolint exited $rc" ;; esac
+        [ -s "$OUT/hadolint.json" ] || echo '[]' > "$OUT/hadolint.json"
+        python3 "$ROOT/scripts/normalize.py" --tool hadolint --input "$OUT/hadolint.json" --category iac \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-iac.json" "${extra[@]}"
+        { echo "findings=$OUT/findings-iac.json"; echo "sarif=$OUT/hadolint.sarif"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"

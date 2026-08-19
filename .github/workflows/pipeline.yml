@@ -410,3 +410,48 @@ jobs:
           findings: ${{ steps.scan.outputs.findings-sca }}
           fail-on: ${{ inputs.fail-on }}
           mode: ${{ inputs.mode }}
+
+  iac:
+    name: iac
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.stages).iac }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - id: trivy
+        uses: ./.pipeline/actions/security/iac/trivy-config
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          output-dir: ${{ runner.temp }}/devsecops/iac
+      - id: hadolint
+        uses: ./.pipeline/actions/security/iac/hadolint
+        with:
+          working-directory: source/${{ inputs.working-directory }}
+          dockerfile: ${{ inputs.dockerfile }}
+          output-dir: ${{ runner.temp }}/devsecops/iac
+          append: "true"
+      - if: always() && steps.trivy.outputs.output-dir != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-iac
+          path: ${{ steps.trivy.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+          if-no-files-found: ignore
+      - uses: ./.pipeline/actions/report/gate
+        with:
+          category: iac
+          findings: ${{ steps.trivy.outputs.findings }}
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
