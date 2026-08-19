@@ -1,0 +1,75 @@
+name: evidence
+description: Consolidate every stage's findings, render the summary and PR comment, emit pipeline.completed, expose the verdict.
+inputs:
+  evidence-dir:
+    description: Directory where all devsecops-<slug>-* artifacts were downloaded
+    default: evidence
+  fail-on:
+    default: ""
+  mode:
+    default: enforce
+  stack:
+    default: ""
+  working-directory:
+    default: "."
+  stages:
+    description: JSON object of enabled stages (plan output)
+    default: ""
+  slug:
+    default: root
+  pr-comment:
+    default: "true"
+  pr-number:
+    default: ""
+outputs:
+  verdict:
+    value: ${{ steps.run.outputs.verdict }}
+  failed-categories:
+    value: ${{ steps.run.outputs.failed-categories }}
+  findings:
+    value: ${{ steps.run.outputs.findings }}
+  summary:
+    value: ${{ steps.run.outputs.summary }}
+  comment:
+    value: ${{ steps.run.outputs.comment }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        EVIDENCE_DIR: ${{ inputs.evidence-dir }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        MODE: ${{ inputs.mode }}
+        STACK: ${{ inputs.stack }}
+        WD: ${{ inputs.working-directory }}
+        STAGES: ${{ inputs.stages }}
+        SLUG: ${{ inputs.slug }}
+        PR_COMMENT: ${{ inputs.pr-comment }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        mkdir -p "$EVIDENCE_DIR"
+        marker="<!-- devsecops-pipeline:${SLUG} -->"
+        python3 "$ROOT/scripts/gate.py" all --dir "$EVIDENCE_DIR" --out "$EVIDENCE_DIR/findings.json" \
+          --fail-on "$FAIL_ON" --mode "$MODE" --stack "$STACK" --working-directory "$WD" --stages "$STAGES" > "$EVIDENCE_DIR/gate.out"
+        verdict="$(sed -n 's/^verdict=//p' "$EVIDENCE_DIR/gate.out")"
+        failed="$(sed -n 's/^failed-categories=//p' "$EVIDENCE_DIR/gate.out")"
+        python3 "$ROOT/scripts/summary.py" --findings "$EVIDENCE_DIR/findings.json" --format summary --extra-dir "$EVIDENCE_DIR" > "$EVIDENCE_DIR/summary.md"
+        cat "$EVIDENCE_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        python3 "$ROOT/scripts/summary.py" --findings "$EVIDENCE_DIR/findings.json" --format comment --extra-dir "$EVIDENCE_DIR" \
+          --marker "$marker" > "$EVIDENCE_DIR/comment.md"
+        if [ "$PR_COMMENT" = "true" ] && [ -n "$PR_NUMBER" ]; then
+          PR_NUMBER="$PR_NUMBER" bash "$ROOT/scripts/pr_comment.sh" "$EVIDENCE_DIR/comment.md" "$marker"
+        fi
+        mkdir -p "$EVIDENCE_DIR/sarif"
+        find "$EVIDENCE_DIR" -name '*.sarif' -not -path "$EVIDENCE_DIR/sarif/*" -exec cp {} "$EVIDENCE_DIR/sarif/" \;
+        payload="$(python3 -c 'import json,sys
+        print(json.dumps({"verdict": sys.argv[1], "mode": sys.argv[2], "failedCategories": [c for c in sys.argv[3].split(",") if c]}))' \
+          "$verdict" "$MODE" "$failed")"
+        python3 "$ROOT/scripts/webhook.py" event --type pipeline.completed --payload "$payload"
+        {
+          echo "verdict=$verdict"; echo "failed-categories=$failed"
+          echo "findings=$EVIDENCE_DIR/findings.json"; echo "summary=$EVIDENCE_DIR/summary.md"; echo "comment=$EVIDENCE_DIR/comment.md"
+        } >> "$GITHUB_OUTPUT"
