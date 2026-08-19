@@ -1,0 +1,11 @@
+{
+  "name": "fixture-vulnerable-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deliberately vulnerable fixture: old lodash/express, a fake private key, a bad Dockerfile. Used by the pipeline's own tests in audit mode.",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "4.17.1",
+    "lodash": "4.17.11"
+  }
+}
