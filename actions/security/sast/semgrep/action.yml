@@ -1,0 +1,69 @@
+name: semgrep
+description: SAST with Semgrep Community Edition (default packs + stack pack, or caller rulesets).
+inputs:
+  working-directory:
+    default: source
+  stack:
+    description: node | python | go | java | dotnet (selects the language pack)
+    default: ""
+  rulesets:
+    description: Comma list of p/ packs or paths; empty = pipeline defaults + stack pack
+    default: ""
+  output-dir:
+    default: ""
+outputs:
+  findings:
+    value: ${{ steps.scan.outputs.findings }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        STACK: ${{ inputs.stack }}
+        RULESETS: ${{ inputs.rulesets }}
+        OUT_IN: ${{ inputs.output-dir }}
+        SEMGREP_SEND_METRICS: "off"
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/sast}"; mkdir -p "$OUT"
+        pipx install --quiet "semgrep==${SEMGREP_VERSION}" >/dev/null
+        export PATH="$HOME/.local/bin:$PATH"
+        configs=()
+        if [ -n "$RULESETS" ]; then
+          IFS=',' read -ra items <<< "$RULESETS"
+          for c in "${items[@]}"; do c="$(echo "$c" | xargs)"; [ -n "$c" ] && configs+=(--config "$c"); done
+        else
+          configs+=(--config p/default --config p/security-audit --config p/owasp-top-ten --config p/cwe-top-25)
+          case "$STACK" in
+            node) configs+=(--config p/javascript --config p/typescript) ;;
+            python) configs+=(--config p/python) ;;
+            go) configs+=(--config p/golang) ;;
+            java) configs+=(--config p/java) ;;
+            dotnet) configs+=(--config p/csharp) ;;
+          esac
+        fi
+        status=ok; reason=""
+        set +e
+        if semgrep scan --help 2>/dev/null | grep -q -- '--sarif-output'; then
+          semgrep scan --metrics=off --quiet "${configs[@]}" --json-output="$OUT/semgrep.json" --sarif-output="$OUT/semgrep.sarif" .
+          rc=$?
+        else
+          semgrep scan --metrics=off --quiet "${configs[@]}" --json --output "$OUT/semgrep.json" .
+          rc=$?
+          semgrep scan --metrics=off --quiet "${configs[@]}" --sarif --output "$OUT/semgrep.sarif" . || true
+        fi
+        set -e
+        case "$rc" in 0|1) ;; *) status=error; reason="semgrep exited $rc" ;; esac
+        [ -s "$OUT/semgrep.json" ] || echo '{"results":[],"errors":[]}' > "$OUT/semgrep.json"
+        python3 "$ROOT/scripts/normalize.py" --tool semgrep --input "$OUT/semgrep.json" --category sast \
+          --tool-version "$SEMGREP_VERSION" --status "$status" --reason "$reason" --out "$OUT/findings-sast.json"
+        [ -s "$OUT/semgrep.sarif" ] || python3 "$ROOT/scripts/sarif.py" --findings "$OUT/findings-sast.json" --out "$OUT/semgrep.sarif"
+        { echo "findings=$OUT/findings-sast.json"; echo "sarif=$OUT/semgrep.sarif"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"
