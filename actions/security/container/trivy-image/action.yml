@@ -1,0 +1,65 @@
+name: trivy-image
+description: Container image vulnerability scan with Trivy against an image in the local Docker daemon (JSON + SARIF).
+inputs:
+  image:
+    description: Image reference present in the local daemon
+    required: true
+  working-directory:
+    description: Where .trivyignore lives
+    default: source
+  ignore-unfixed:
+    default: "true"
+  output-dir:
+    default: ""
+outputs:
+  findings:
+    value: ${{ steps.scan.outputs.findings }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: date
+      shell: bash
+      run: echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.cache/trivy
+        key: trivy-db-${{ runner.os }}-${{ steps.date.outputs.today }}
+        restore-keys: |
+          trivy-db-${{ runner.os }}-
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        IMAGE: ${{ inputs.image }}
+        IGNORE_UNFIXED: ${{ inputs.ignore-unfixed }}
+        OUT_IN: ${{ inputs.output-dir }}
+        TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
+        TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1
+        TRIVY_TIMEOUT: 15m
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/container}"; mkdir -p "$OUT" "$HOME/.cache/trivy"; chmod 0777 "$OUT"
+        ver="${TRIVY_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        flags=(); [ "$IGNORE_UNFIXED" = "true" ] && flags+=(--ignore-unfixed)
+        trivy() {
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" -w /src -v "$OUT:/out" \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY -e TRIVY_TIMEOUT "$TRIVY_IMAGE" "$@"
+        }
+        status=ok; reason=""
+        set +e
+        trivy image --scanners vuln --format json --output /out/trivy-image.json --exit-code 0 "${flags[@]}" "$IMAGE"
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then status=error; reason="trivy image exited $rc"; fi
+        [ -s "$OUT/trivy-image.json" ] || echo '{"Results":[]}' > "$OUT/trivy-image.json"
+        trivy convert --format sarif --output /out/trivy-image.sarif /out/trivy-image.json || true
+        python3 "$ROOT/scripts/normalize.py" --tool trivy-vuln --input "$OUT/trivy-image.json" --category container \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-container.json"
+        [ -s "$OUT/trivy-image.sarif" ] || python3 "$ROOT/scripts/sarif.py" --findings "$OUT/findings-container.json" --out "$OUT/trivy-image.sarif"
+        { echo "findings=$OUT/findings-container.json"; echo "sarif=$OUT/trivy-image.sarif"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"

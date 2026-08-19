@@ -1,0 +1,62 @@
+name: image-push
+description: Build for every requested platform (cache warmed by image-build) and push with the given tags; writes image.json.
+inputs:
+  context:
+    required: true
+  dockerfile:
+    default: Dockerfile
+  image-name:
+    required: true
+  tags:
+    description: Newline-separated tags (from image-build)
+    required: true
+  labels:
+    default: ""
+  platforms:
+    default: linux/amd64
+  build-args:
+    default: ""
+  scope:
+    default: root
+  output-dir:
+    default: ""
+outputs:
+  digest:
+    value: ${{ steps.push.outputs.digest }}
+  primary-tag:
+    value: ${{ steps.record.outputs.primary-tag }}
+  pushed:
+    value: ${{ steps.record.outputs.pushed }}
+  output-dir:
+    value: ${{ steps.record.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: push
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.context }}/${{ inputs.dockerfile }}
+        platforms: ${{ inputs.platforms }}
+        push: true
+        tags: ${{ inputs.tags }}
+        labels: ${{ inputs.labels }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: type=gha,scope=${{ inputs.scope }}
+        provenance: false
+        sbom: false
+    - id: record
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+        TAGS: ${{ inputs.tags }}
+        OUT_IN: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/image}"; mkdir -p "$OUT"
+        primary="$(printf '%s\n' "$TAGS" | grep -m1 ':sha-' || printf '%s\n' "$TAGS" | head -n1)"
+        jq -n --arg image "$IMAGE" --arg digest "$DIGEST" --arg primary "$primary" --arg tags "$TAGS" \
+          '{image: $image, digest: $digest, primary_tag: $primary, tags: ($tags | split("\n") | map(select(length > 0))), pushed: true}' > "$OUT/image.json"
+        { echo "primary-tag=$primary"; echo "pushed=true"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"
+        echo "pushed $primary @ $DIGEST" >> "$GITHUB_STEP_SUMMARY"

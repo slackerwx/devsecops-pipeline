@@ -455,3 +455,89 @@ jobs:
           findings: ${{ steps.trivy.outputs.findings }}
           fail-on: ${{ inputs.fail-on }}
           mode: ${{ inputs.mode }}
+
+  image:
+    name: image
+    needs: [plan, build, test, secrets, sast, sca, iac]
+    if: >-
+      ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).image
+          && needs.build.result != 'failure' && needs.build.result != 'cancelled'
+          && needs.test.result != 'failure' && needs.test.result != 'cancelled'
+          && needs.secrets.result != 'failure' && needs.secrets.result != 'cancelled'
+          && needs.sast.result != 'failure' && needs.sast.result != 'cancelled'
+          && needs.sca.result != 'failure' && needs.sca.result != 'cancelled'
+          && needs.iac.result != 'failure' && needs.iac.result != 'cancelled' }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write   # pushes the scanned image to the registry when the caller asked for it
+    outputs:
+      image: ${{ needs.plan.outputs.image-name }}
+      digest: ${{ steps.push.outputs.digest }}
+      tags: ${{ steps.build.outputs.tags }}
+      pushed: ${{ steps.push.outputs.pushed || 'false' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - id: build
+        uses: ./.pipeline/actions/supply-chain/image-build
+        with:
+          context: source/${{ inputs.working-directory }}
+          dockerfile: ${{ inputs.dockerfile }}
+          image-name: ${{ needs.plan.outputs.image-name }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          scope: ${{ needs.plan.outputs.slug }}
+      - id: scan
+        uses: ./.pipeline/actions/security/container/trivy-image
+        with:
+          image: ${{ steps.build.outputs.local-tag }}
+          working-directory: source/${{ inputs.working-directory }}
+          ignore-unfixed: ${{ inputs.ignore-unfixed }}
+      - if: always() && steps.scan.outputs.output-dir != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-container
+          path: ${{ steps.scan.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+          if-no-files-found: ignore
+      - uses: ./.pipeline/actions/report/gate
+        with:
+          category: container
+          findings: ${{ steps.scan.outputs.findings }}
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
+      - if: needs.plan.outputs.push == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || github.token }}
+      - id: push
+        if: needs.plan.outputs.push == 'true'
+        uses: ./.pipeline/actions/supply-chain/image-push
+        with:
+          context: source/${{ inputs.working-directory }}
+          dockerfile: ${{ inputs.dockerfile }}
+          image-name: ${{ needs.plan.outputs.image-name }}
+          tags: ${{ steps.build.outputs.tags }}
+          labels: ${{ steps.build.outputs.labels }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          scope: ${{ needs.plan.outputs.slug }}
+          output-dir: ${{ runner.temp }}/devsecops/image
+      - if: steps.push.outputs.pushed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-image
+          path: ${{ steps.push.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
