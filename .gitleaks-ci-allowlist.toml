@@ -1,0 +1,13 @@
+# Gitleaks config for this repository's own dogfood runs. Callers of the pipeline do not need it.
+#
+# tests/fixtures/vulnerable-node/secrets/fake_id_rsa is a planted key that the audit-mode
+# dogfood-vulnerable job has to keep detecting. Gitleaks scans the whole git history, so the
+# enforce-mode fixture runs see it too and would gate on it. Allowlisting that one path leaves
+# the default rules and the secrets=any threshold enforcing for everything else in the repo.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "planted secret fixture, asserted on by the audit-mode dogfood run"
+paths = ['''^tests/fixtures/vulnerable-node/secrets/fake_id_rsa$''']
