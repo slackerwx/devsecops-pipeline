@@ -59,7 +59,8 @@ runs:
           envargs=(-e "PORT=$PORT")
           while IFS= read -r line; do [ -n "$line" ] && envargs+=(-e "$line"); done <<< "$APP_ENV"
           docker pull -q "$IMAGE@$DIGEST"
-          container=devsecops-dast-app
+          container="devsecops-dast-app-$$-${GITHUB_RUN_ID:-0}"
+          trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
           docker run -d --name "$container" -p "127.0.0.1:${PORT}:${PORT}" "${envargs[@]}" "$IMAGE@$DIGEST" >/dev/null
           target="http://127.0.0.1:${PORT}"
           healthy=false
@@ -70,7 +71,6 @@ runs:
           if [ "$healthy" != true ]; then
             echo "::error::dast: app did not answer on ${target}${HEALTH} within 60s"
             docker logs "$container" 2>&1 | tail -n 50
-            docker rm -f "$container" >/dev/null
             exit 1
           fi
         fi
@@ -82,7 +82,6 @@ runs:
           zap-baseline.py -t "$target" -J zap.json -r zap.html -w zap.md -I -m "$MINUTES" "${rules[@]}"
         rc=$?
         set -e
-        [ -n "$container" ] && docker rm -f "$container" >/dev/null
         case "$rc" in 0|1|2) ;; *) status=error; reason="zap-baseline exited $rc" ;; esac
         if [ ! -s "$OUT/zap.json" ]; then status=error; reason="${reason:-zap produced no report}"; echo '{"site":[]}' > "$OUT/zap.json"; fi
         python3 "$ROOT/scripts/normalize.py" --tool zap --input "$OUT/zap.json" --category dast \
