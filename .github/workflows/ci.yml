@@ -78,6 +78,7 @@ jobs:
       packages: write        # the image stage pushes the fixture image to GHCR
       id-token: write        # keyless signing mints an OIDC token
       pull-requests: write   # the evidence stage comments the findings summary on the PR
+      security-events: write # the evidence stage can upload the consolidated SARIF to code scanning
     uses: ./.github/workflows/pipeline.yml
     with:
       working-directory: tests/fixtures/${{ matrix.stack }}
