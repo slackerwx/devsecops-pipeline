@@ -556,10 +556,66 @@ jobs:
           path: ${{ steps.sbom.outputs.output-dir }}
           retention-days: ${{ inputs.evidence-retention-days }}
 
+  dast:
+    name: dast
+    needs: [plan, image]
+    if: >-
+      ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).dast
+          && (needs.plan.outputs.dast-mode == 'external'
+              || (needs.image.result == 'success' && needs.image.outputs.pushed == 'true')) }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read    # pulls the candidate image back from the registry to run it as an ephemeral target
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .pipeline
+          persist-credentials: false
+      - if: needs.plan.outputs.dast-mode == 'ephemeral'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || github.token }}
+      - id: scan
+        uses: ./.pipeline/actions/security/dast/zap-baseline
+        with:
+          target-url: ${{ inputs.dast-target-url }}
+          image: ${{ needs.image.outputs.image }}
+          digest: ${{ needs.image.outputs.digest }}
+          app-port: ${{ inputs.app-port }}
+          app-health-path: ${{ inputs.app-health-path }}
+          app-env: ${{ inputs.app-env }}
+          working-directory: source/${{ inputs.working-directory }}
+      - if: always() && steps.scan.outputs.output-dir != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: devsecops-${{ needs.plan.outputs.slug }}-dast
+          path: ${{ steps.scan.outputs.output-dir }}
+          retention-days: ${{ inputs.evidence-retention-days }}
+          if-no-files-found: ignore
+      - uses: ./.pipeline/actions/report/gate
+        with:
+          category: dast
+          findings: ${{ steps.scan.outputs.findings }}
+          fail-on: ${{ inputs.fail-on }}
+          mode: ${{ inputs.mode }}
+
   sign:
     name: sign
-    needs: [plan, image]
-    if: ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).sign && needs.image.result == 'success' && needs.image.outputs.pushed == 'true' }}
+    needs: [plan, image, dast]
+    if: >-
+      ${{ !cancelled() && fromJSON(needs.plan.outputs.stages).sign
+          && needs.image.result == 'success' && needs.image.outputs.pushed == 'true'
+          && needs.dast.result != 'failure' && needs.dast.result != 'cancelled' }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 10
     permissions:

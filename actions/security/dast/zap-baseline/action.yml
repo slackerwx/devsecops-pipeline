@@ -1,0 +1,91 @@
+name: zap-baseline
+description: DAST with OWASP ZAP baseline against an external URL or an ephemeral container of the candidate image.
+inputs:
+  target-url:
+    description: External target; when set, no container is started
+    default: ""
+  image:
+    default: ""
+  digest:
+    default: ""
+  app-port:
+    default: ""
+  app-health-path:
+    default: /
+  app-env:
+    description: Multiline KEY=VALUE for the container
+    default: ""
+  working-directory:
+    description: Where .zap/rules.tsv may live
+    default: source
+  minutes:
+    description: Max spider minutes (zap-baseline -m)
+    default: "5"
+  output-dir:
+    default: ""
+outputs:
+  findings:
+    value: ${{ steps.scan.outputs.findings }}
+  sarif:
+    value: ${{ steps.scan.outputs.sarif }}
+  target:
+    value: ${{ steps.scan.outputs.target }}
+  output-dir:
+    value: ${{ steps.scan.outputs.output-dir }}
+runs:
+  using: composite
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        TARGET_URL: ${{ inputs.target-url }}
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ inputs.digest }}
+        PORT: ${{ inputs.app-port }}
+        HEALTH: ${{ inputs.app-health-path }}
+        APP_ENV: ${{ inputs.app-env }}
+        WD: ${{ inputs.working-directory }}
+        MINUTES: ${{ inputs.minutes }}
+        OUT_IN: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        ROOT="$(cd "$GITHUB_ACTION_PATH/../../../.." && pwd)"
+        set -a; . "$ROOT/config/versions.env"; set +a
+        OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/dast}"; mkdir -p "$OUT"; chmod 0777 "$OUT"
+        ver="${ZAP_IMAGE#*:}"; ver="${ver%%@*}"; ver="${ver#v}"
+        target="$TARGET_URL"; container=""
+        if [ -z "$target" ]; then
+          if [ -z "$IMAGE" ] || [ -z "$DIGEST" ] || [ -z "$PORT" ]; then echo "::error::dast: need target-url, or image + digest + app-port"; exit 1; fi
+          envargs=(-e "PORT=$PORT")
+          while IFS= read -r line; do [ -n "$line" ] && envargs+=(-e "$line"); done <<< "$APP_ENV"
+          docker pull -q "$IMAGE@$DIGEST"
+          container=devsecops-dast-app
+          docker run -d --name "$container" -p "127.0.0.1:${PORT}:${PORT}" "${envargs[@]}" "$IMAGE@$DIGEST" >/dev/null
+          target="http://127.0.0.1:${PORT}"
+          healthy=false
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null "${target}${HEALTH}"; then healthy=true; break; fi
+            sleep 1
+          done
+          if [ "$healthy" != true ]; then
+            echo "::error::dast: app did not answer on ${target}${HEALTH} within 60s"
+            docker logs "$container" 2>&1 | tail -n 50
+            docker rm -f "$container" >/dev/null
+            exit 1
+          fi
+        fi
+        rules=()
+        if [ -f "$WD/.zap/rules.tsv" ]; then cp "$WD/.zap/rules.tsv" "$OUT/rules.tsv"; rules=(-c rules.tsv); fi
+        status=ok; reason=""
+        set +e
+        docker run --rm --network host -v "$OUT:/zap/wrk:rw" "$ZAP_IMAGE" \
+          zap-baseline.py -t "$target" -J zap.json -r zap.html -w zap.md -I -m "$MINUTES" "${rules[@]}"
+        rc=$?
+        set -e
+        [ -n "$container" ] && docker rm -f "$container" >/dev/null
+        case "$rc" in 0|1|2) ;; *) status=error; reason="zap-baseline exited $rc" ;; esac
+        if [ ! -s "$OUT/zap.json" ]; then status=error; reason="${reason:-zap produced no report}"; echo '{"site":[]}' > "$OUT/zap.json"; fi
+        python3 "$ROOT/scripts/normalize.py" --tool zap --input "$OUT/zap.json" --category dast \
+          --tool-version "$ver" --status "$status" --reason "$reason" --out "$OUT/findings-dast.json"
+        python3 "$ROOT/scripts/sarif.py" --findings "$OUT/findings-dast.json" --out "$OUT/zap.sarif"
+        { echo "findings=$OUT/findings-dast.json"; echo "sarif=$OUT/zap.sarif"; echo "target=$target"; echo "output-dir=$OUT"; } >> "$GITHUB_OUTPUT"
