@@ -5,6 +5,15 @@ project follows Semantic Versioning (breaking changes to inputs/outputs bump the
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-08-20
+
+### Fixed
+- Test-report upload no longer fails the `test` job when `working-directory` is left at its `.`
+  default. The artifact globs interpolated the input directly, producing `source/./**`, which
+  `actions/upload-artifact` rejects during pattern validation — before `if-no-files-found: ignore`
+  can apply. The path prefix is now computed in a shell step. Only the `.` case changes; the glob is
+  byte-identical for every other `working-directory`.
+
 ## [1.0.0] — 2026-08-20
 
 ### Added

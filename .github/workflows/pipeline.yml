@@ -315,6 +315,21 @@ jobs:
           version: ${{ needs.plan.outputs.toolchain-version }}
           phase: test
           command: ${{ inputs.test-command }}
+      # upload-artifact rejects a glob containing a "." path segment before it
+      # ever matches files, so "source/./**" would hard-fail the job whenever
+      # working-directory is left at its "." default. Build the suffix here
+      # instead: empty for ".", "/<dir>" otherwise.
+      - id: report-paths
+        if: always()
+        shell: bash
+        env:
+          WD: ${{ inputs.working-directory }}
+        run: |
+          if [ "$WD" = "." ]; then
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=/$WD" >> "$GITHUB_OUTPUT"
+          fi
       - name: upload test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -323,14 +338,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: ${{ inputs.evidence-retention-days }}
           path: |
-            source/${{ inputs.working-directory }}/**/junit*.xml
-            source/${{ inputs.working-directory }}/**/TEST-*.xml
-            source/${{ inputs.working-directory }}/**/*.trx
-            source/${{ inputs.working-directory }}/**/test-results/**/*.xml
-            source/${{ inputs.working-directory }}/**/coverage/**
-            source/${{ inputs.working-directory }}/**/coverage.xml
-            source/${{ inputs.working-directory }}/**/lcov.info
-            !source/${{ inputs.working-directory }}/**/node_modules/**
+            source${{ steps.report-paths.outputs.dir }}/**/junit*.xml
+            source${{ steps.report-paths.outputs.dir }}/**/TEST-*.xml
+            source${{ steps.report-paths.outputs.dir }}/**/*.trx
+            source${{ steps.report-paths.outputs.dir }}/**/test-results/**/*.xml
+            source${{ steps.report-paths.outputs.dir }}/**/coverage/**
+            source${{ steps.report-paths.outputs.dir }}/**/coverage.xml
+            source${{ steps.report-paths.outputs.dir }}/**/lcov.info
+            !source${{ steps.report-paths.outputs.dir }}/**/node_modules/**
 
   secrets:
     name: secrets
