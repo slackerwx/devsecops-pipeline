@@ -10,12 +10,12 @@ permissions:
   pull-requests: write
 jobs:
   api:
-    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@d746477802a801bab9a5a20b7f8934498d234d25 # v1.0.0
     with:
       working-directory: api
       app-port: "8080"
   web:
-    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@d746477802a801bab9a5a20b7f8934498d234d25 # v1.0.0
     with:
       working-directory: client
       skip-stages: image,dast,sign

@@ -14,6 +14,6 @@ concurrency:
   cancel-in-progress: true
 jobs:
   devsecops:
-    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@d746477802a801bab9a5a20b7f8934498d234d25 # v1.0.0
     with:
       app-port: "3000"
