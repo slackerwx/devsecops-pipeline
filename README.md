@@ -28,7 +28,7 @@ permissions:
   pull-requests: write
 jobs:
   devsecops:
-    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@<sha>  # vX.Y.Z
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@d746477802a801bab9a5a20b7f8934498d234d25  # v1.0.0
     with:
       app-port: "3000"   # enables DAST against your image; drop it if the app is not an HTTP service
 ```

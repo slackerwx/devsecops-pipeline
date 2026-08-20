@@ -5,7 +5,7 @@ project follows Semantic Versioning (breaking changes to inputs/outputs bump the
 
 ## [Unreleased]
 
-## [1.0.0] — <release date>
+## [1.0.0] — 2026-08-20
 
 ### Added
 - Reusable workflow `pipeline.yml`: plan, build, test, secrets (Gitleaks), sast (Semgrep CE), sca +
