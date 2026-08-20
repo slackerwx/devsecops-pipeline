@@ -1,0 +1,19 @@
+name: pipeline
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  pull-requests: write
+concurrency:
+  group: devsecops-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  devsecops:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      app-port: "3000"

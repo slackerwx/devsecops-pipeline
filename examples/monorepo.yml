@@ -1,0 +1,21 @@
+name: pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  pull-requests: write
+jobs:
+  api:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      working-directory: api
+      app-port: "8080"
+  web:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      working-directory: client
+      skip-stages: image,dast,sign
