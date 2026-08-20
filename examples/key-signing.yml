@@ -1,0 +1,17 @@
+name: pipeline
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  devsecops:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      sign: key
+      cosign-signature-format: bundle
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}

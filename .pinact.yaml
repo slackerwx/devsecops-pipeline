@@ -5,3 +5,17 @@ files:
   - pattern: "actions/*/*/action.yml"
   - pattern: "actions/*/*/*/action.yml"
   - pattern: "examples/*.yml"
+# examples/*.yml intentionally show `uses: .../pipeline.yml@main` (this repo has no
+# release yet, so there is no tag pinact can resolve `main` to) and, in
+# custom-tests.yml's inline job, `actions/checkout@main` / `actions/setup-python@main`
+# for the same reason (no --branch-to-tag configured). pinact has no way to pin a
+# branch ref to its current HEAD SHA — only to an already-pinned SHA or a resolvable
+# semver tag — so without this it hard-errors on these lines. Re-pin for real once
+# v1.0.0 is tagged (tracked as follow-up to Task 24).
+ignore_actions:
+  - name: "^slackerwx/devsecops-pipeline/\\.github/workflows/pipeline\\.yml$"
+    ref: "^main$"
+  - name: "^actions/checkout$"
+    ref: "^main$"
+  - name: "^actions/setup-python$"
+    ref: "^main$"

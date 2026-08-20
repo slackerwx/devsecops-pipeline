@@ -1,0 +1,17 @@
+name: pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  pull-requests: write
+jobs:
+  devsecops:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      mode: audit
+      fail-on: secrets=any,sast=critical,sca=critical,container=critical,iac=critical
+      pr-comment: true

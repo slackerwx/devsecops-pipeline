@@ -1,0 +1,18 @@
+name: pipeline
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+jobs:
+  devsecops:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      runner: homelab
+      registry: registry.homelab.internal
+      image-name: registry.homelab.internal/apps/my-service
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}

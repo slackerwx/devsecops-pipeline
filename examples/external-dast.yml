@@ -1,0 +1,14 @@
+name: dast-staging
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+permissions:
+  contents: read
+jobs:
+  dast:
+    uses: slackerwx/devsecops-pipeline/.github/workflows/pipeline.yml@main
+    with:
+      skip-stages: build,test,secrets,sast,sca,iac,image,sign
+      dast-target-url: https://staging.example.com
+      fail-on: dast=medium
