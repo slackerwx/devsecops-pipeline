@@ -50,10 +50,13 @@ runs:
         set -euo pipefail
         OUT="${OUT_IN:-$RUNNER_TEMP/devsecops/sign}"; mkdir -p "$OUT"
         ref="${IMAGE}@${DIGEST}"
+        # Probe by acceptance, not by --help text: cobra hides deprecated flags from --help
+        # (MarkDeprecated sets Hidden) while still honouring them, so grepping --help silently
+        # drops flags that work. Asking cosign to parse the flag is what actually decides.
         legacy_flags() {
           local cmd="$1" flags=""
           for opt in --new-bundle-format=false --use-signing-config=false --registry-referrers-mode=legacy; do
-            if cosign "$cmd" --help 2>&1 | grep -q -- "${opt%%=*}"; then flags="$flags $opt"; fi
+            if cosign "$cmd" "$opt" --help >/dev/null 2>&1; then flags="$flags $opt"; fi
           done
           echo "$flags"
         }
