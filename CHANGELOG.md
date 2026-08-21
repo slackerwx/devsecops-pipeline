@@ -5,6 +5,18 @@ project follows Semantic Versioning (breaking changes to inputs/outputs bump the
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-21
+
+### Fixed
+- The `java` stack no longer fails the `build` and `test` jobs when `working-directory` is left at
+  its `.` default. `actions/setup-java` resolves `cache-dependency-path` through `@actions/glob`,
+  which rejects a `.` path segment anywhere but the first, and the pipeline hands the stack action
+  `source/<working-directory>` — so the default produced `source/./**/pom.xml` (or
+  `source/./**/*.gradle*` on gradle) and the step errored out before anything was built. The
+  trailing `/.` is now stripped before the globs are built, covering both package managers. Only the
+  `.` case changes; the globs are byte-identical for every other `working-directory`. Same bug class
+  as 1.0.1's test-report upload fix, which missed this instance.
+
 ## [1.0.2] — 2026-08-20
 
 ### Fixed

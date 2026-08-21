@@ -24,6 +24,12 @@ runs:
         WD: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
+        # setup-java resolves cache-dependency-path through @actions/glob, which
+        # rejects a "." path segment anywhere but the first. The pipeline hands
+        # this action "source/<working-directory>", so the "." default arrives as
+        # "source/." and every glob built below would hard-fail the job. Drop the
+        # trailing "/." here; a no-op for any other working-directory.
+        WD="${WD%/.}"
         if [ "$PM" = gradle ]; then
           { echo "deps<<EOF"; echo "$WD/**/*.gradle*"; echo "$WD/**/gradle-wrapper.properties"; echo "EOF"; } >> "$GITHUB_OUTPUT"
           if [ -x ./gradlew ]; then echo "tool=./gradlew"; else echo "tool=gradle"; fi >> "$GITHUB_OUTPUT"
