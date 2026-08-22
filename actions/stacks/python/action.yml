@@ -21,12 +21,20 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         PM: ${{ inputs.package-manager }}
+        WD: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         ROOT="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
         set -a; . "$ROOT/config/versions.env"; set +a
         echo "poetry-version=$POETRY_VERSION" >> "$GITHUB_OUTPUT"
         echo "uv-version=$UV_VERSION" >> "$GITHUB_OUTPUT"
+        # setup-uv resolves cache-dependency-glob through @actions/glob, which rejects a
+        # "." path segment anywhere but the first. The pipeline hands this action
+        # "source/<working-directory>", so the "." default arrives as "source/." and the
+        # glob came out "source/./uv.lock". Drop the trailing "/." here; a no-op for any
+        # other working-directory. The pip and poetry branches below build dep from
+        # $(pwd) after the cd, so they never carried a "." segment to begin with.
+        echo "wd=${WD%/.}" >> "$GITHUB_OUTPUT"
         cache=""; dep=""
         case "$PM" in
           poetry) cache=poetry; dep="$(pwd)/poetry.lock" ;;
@@ -50,7 +58,7 @@ runs:
       with:
         version: ${{ steps.cfg.outputs.uv-version }}
         enable-cache: true
-        cache-dependency-glob: ${{ inputs.working-directory }}/uv.lock
+        cache-dependency-glob: ${{ steps.cfg.outputs.wd }}/uv.lock
     - name: install dependencies
       shell: bash
       working-directory: ${{ inputs.working-directory }}
