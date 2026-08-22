@@ -5,6 +5,34 @@ project follows Semantic Versioning (breaking changes to inputs/outputs bump the
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-08-21
+
+### Fixed
+- The `go` stack again caches Go modules when `working-directory` is left at its `.` default.
+  `actions/setup-go` resolves `cache-dependency-path` through `@actions/glob`, which rejects a `.`
+  path segment anywhere but the first, and the pipeline hands the stack action
+  `source/<working-directory>` — so the default produced `source/./go.sum`. Unlike 1.0.3's `java`
+  case, `setup-go` catches the rejection and downgrades it to `##[warning]Restore cache failed`, so
+  affected runs stayed green while silently re-downloading every module on every `build` and `test`
+  job. The trailing `/.` is now stripped before the path is built. `go-version-file` takes the same
+  stripped value for consistency; it resolves through `fs` rather than glob, so it was never broken
+  and is unaffected in behaviour.
+- The `python` stack's `uv` branch no longer builds an invalid `cache-dependency-glob` when
+  `working-directory` is left at its `.` default, for the same reason — `astral-sh/setup-uv`
+  received `source/./uv.lock`. Same one-line strip.
+- Both paths are byte-identical for every non-root `working-directory`; only the `.` case changes.
+  The `pip` and `poetry` branches were never affected — they build absolute paths from `$(pwd)` —
+  and `node` and `dotnet` pass no such glob at all. Closes the bug class opened in 1.0.1 and
+  continued in 1.0.3 (`#22`).
+
+  Verification note, stated plainly: the `go` fix is confirmed by a real root-level consumer run
+  (`slackerwx/virtualab-sample-go`), where the module cache now saves and restores instead of
+  warning. The `uv` fix ships unexercised by any real run — no dogfood fixture and no sample repo
+  uses `uv`, so it rests on being the identical mechanical change applied to structurally identical
+  code. The dogfood matrix cannot cover either case: its fixtures all live under
+  `tests/fixtures/<stack>`, never at the repository root, and the `go` fixture additionally ships no
+  `go.sum`, so `setup-go` caching is switched off there entirely.
+
 ## [1.0.3] — 2026-08-21
 
 ### Fixed

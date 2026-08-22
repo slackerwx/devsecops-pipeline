@@ -19,15 +19,27 @@ runs:
     - id: cfg
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        WD: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [ -f go.sum ]; then echo "cache=true"; else echo "cache=false"; fi >> "$GITHUB_OUTPUT"
+        # setup-go resolves cache-dependency-path through @actions/glob, which rejects a
+        # "." path segment anywhere but the first. The pipeline hands this action
+        # "source/<working-directory>", so the "." default arrives as "source/." and the
+        # glob came out "source/./go.sum". setup-go catches the rejection and downgrades
+        # it to "##[warning]Restore cache failed", so the job stays green with the module
+        # cache silently off. Drop the trailing "/." here; a no-op for any other
+        # working-directory. go-version-file reads through fs rather than glob, so it
+        # resolved fine either way, but it takes the same value to keep the two paths
+        # consistent.
+        echo "wd=${WD%/.}" >> "$GITHUB_OUTPUT"
     - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
       with:
         go-version: ${{ inputs.version }}
-        go-version-file: ${{ inputs.working-directory }}/go.mod
+        go-version-file: ${{ steps.cfg.outputs.wd }}/go.mod
         cache: ${{ steps.cfg.outputs.cache }}
-        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+        cache-dependency-path: ${{ steps.cfg.outputs.wd }}/go.sum
     - name: download modules
       shell: bash
       working-directory: ${{ inputs.working-directory }}
