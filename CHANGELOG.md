@@ -5,6 +5,22 @@ project follows Semantic Versioning (breaking changes to inputs/outputs bump the
 
 ## [Unreleased]
 
+### Added
+- A unit guard (`tests/unit/test_stack_globs.py`) over the bug class that produced 1.0.1, 1.0.3 and
+  1.0.4: every input the setup actions resolve through `@actions/glob` must derive its path either
+  from a working directory with the trailing `/.` stripped, or from an absolute `$(pwd)` built after
+  the `cd`. Interpolating `working-directory` straight into such an input now fails `make unit`.
+  Verified to catch all three historical regressions by running it against the pre-fix `action.yml`
+  of each (`6ab018b^` java, `343818d^` go and python/uv), and to pass on all three fixes.
+
+  This closes #24 differently from the fix that issue suggested. A dogfood job at the repository
+  root is not reachable here — `pipeline.yml` checks the repo out itself, so `working-directory: .`
+  means this repo's own root, which would have to carry a real app — and the issue's own suggestion
+  of extending the node job would have caught none of the three: node builds its cache path from
+  `$(pwd)` and is structurally immune. One dogfood job also covers one stack, whereas the three bugs
+  landed in three different ones. The guard covers all five at `make unit` speed. `go-version-file`
+  is deliberately excluded: `setup-go` reads it through `fs`, not glob, so it was never affected.
+
 ## [1.0.4] — 2026-08-21
 
 ### Fixed
